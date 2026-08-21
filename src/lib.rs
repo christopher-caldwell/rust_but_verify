@@ -1,14 +1,5 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+mod identifiers;
+mod model;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub use identifiers::{Action, ActionKey, RoleAssignment, RoleId, ScopeKey};
+pub use model::{Model, ModelBuilder, ModelError};
