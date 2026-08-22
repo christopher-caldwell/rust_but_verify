@@ -10,7 +10,7 @@ use criterion::{
 };
 use rust_but_verify::{
     Access, Action, ActionId, ActionOn, Authorizer, Decision, Policy, RoleAssignment, TargetKey,
-    TargetType, define_authorization,
+    TargetType, Targets, define_authorization,
 };
 
 define_authorization! {
@@ -464,52 +464,85 @@ fn bench_decision_cost(criterion: &mut Criterion) {
         let deny = Access::new([assignment("reader", id)]);
         for runtime in [false, true] {
             for (outcome, access) in [("allow", &allow), ("deny", &deny)] {
-                let benchmark = BenchmarkId::new(
-                    format!("{}_{}", if runtime { "runtime" } else { "typed" }, outcome),
-                    label,
+                let path = if runtime { "runtime" } else { "typed" };
+                group.bench_with_input(
+                    BenchmarkId::new(format!("{path}_can_{outcome}"), label),
+                    access,
+                    |b, access| {
+                        if runtime {
+                            b.iter(|| {
+                                black_box(authz.can_runtime(
+                                    black_box(access),
+                                    black_box(&action),
+                                    black_box(&target),
+                                ))
+                            })
+                        } else {
+                            b.iter(|| {
+                                black_box(authz.can(
+                                    black_box(access),
+                                    black_box(EditArticle),
+                                    black_box(Article::ident(id)),
+                                ))
+                            })
+                        }
+                    },
                 );
-                group.bench_with_input(benchmark, access, |b, access| {
-                    if runtime {
-                        b.iter(|| {
-                            black_box(authz.can_runtime(
-                                black_box(access),
-                                black_box(&action),
-                                black_box(&target),
-                            ))
-                        })
-                    } else {
-                        b.iter(|| {
-                            black_box(authz.can(
-                                black_box(access),
-                                black_box(EditArticle),
-                                black_box(Article::ident(id)),
-                            ))
-                        })
-                    }
-                });
+                group.bench_with_input(
+                    BenchmarkId::new(format!("{path}_decide_{outcome}"), label),
+                    access,
+                    |b, access| {
+                        if runtime {
+                            b.iter(|| {
+                                black_box(authz.decide_runtime(
+                                    black_box(access),
+                                    black_box(&action),
+                                    black_box(&target),
+                                ))
+                            })
+                        } else {
+                            b.iter(|| {
+                                black_box(authz.decide(
+                                    black_box(access),
+                                    black_box(EditArticle),
+                                    black_box(Article::ident(id)),
+                                ))
+                            })
+                        }
+                    },
+                );
             }
         }
     }
     group.finish();
 }
 
-fn run_can_any(authz: &Authorizer, access: &Access, candidates: usize) -> Decision {
+fn run_can_any(authz: &Authorizer, access: &Access, candidates: usize) -> bool {
     match candidates {
         2 => authz.can_any(access, EditArticle, (Article::ident(991), Wiki::ident(42))),
-        3 => authz.can_any(
-            access,
-            EditArticle,
-            (Article::ident(991), Wiki::ident(42), Section::ident(8)),
-        ),
         4 => authz.can_any(
             access,
             EditArticle,
-            (
-                Article::ident(991),
-                Wiki::ident(42),
-                Section::ident(8),
-                Organization::ident(1),
-            ),
+            Targets::<EditArticle>::new()
+                .add(Article::ident(991))
+                .add(Wiki::ident(42))
+                .add(Section::ident(8))
+                .add(Organization::ident(1)),
+        ),
+        10 => authz.can_any(
+            access,
+            EditArticle,
+            Targets::<EditArticle>::new()
+                .add(Article::ident(991))
+                .add(Wiki::ident(42))
+                .add(Section::ident(8))
+                .add(Article::ident(1_001))
+                .add(Article::ident(1_002))
+                .add(Article::ident(1_003))
+                .add(Article::ident(1_004))
+                .add(Article::ident(1_005))
+                .add(Article::ident(1_006))
+                .add(Organization::ident(1)),
         ),
         _ => unreachable!(),
     }
@@ -532,39 +565,17 @@ fn can_any_access(size: usize, allowing_index: Option<usize>) -> Access {
 }
 fn bench_can_any(criterion: &mut Criterion) {
     let authz = authorizer();
-    let mut group = criterion.benchmark_group("can_any_matrix");
-    for size in [0, 1, 5, 10, 25, 100, 1_000] {
-        for candidates in [2, 3, 4] {
-            let positions: Vec<(&str, Option<usize>)> = match candidates {
-                2 => vec![
-                    ("first_allow", Some(0)),
-                    ("last_allow", Some(1)),
-                    ("all_deny", None),
-                ],
-                3 => vec![
-                    ("first_allow", Some(0)),
-                    ("middle_allow", Some(1)),
-                    ("last_allow", Some(2)),
-                    ("all_deny", None),
-                ],
-                _ => vec![
-                    ("first_allow", Some(0)),
-                    ("middle_allow", Some(1)),
-                    ("last_allow", Some(3)),
-                    ("all_deny", None),
-                ],
-            };
-            for (position, allowing_index) in positions {
-                let access = can_any_access(size, allowing_index);
-                group.bench_with_input(
-                    BenchmarkId::new(format!("{candidates}_targets_{position}"), size),
-                    &access,
-                    |b, access| {
-                        b.iter(|| black_box(run_can_any(&authz, black_box(access), candidates)))
-                    },
-                );
-            }
-        }
+    let mut group = criterion.benchmark_group("locked_multi_target");
+    for (label, candidates, allowing_index) in [
+        ("tuple_two_all_deny", 2, None),
+        ("tuple_two_second_allow", 2, Some(1)),
+        ("targets_four_all_deny", 4, None),
+        ("targets_ten_all_deny", 10, None),
+    ] {
+        let access = can_any_access(1, allowing_index);
+        group.bench_function(label, |b| {
+            b.iter(|| black_box(run_can_any(&authz, black_box(&access), candidates)))
+        });
     }
     group.finish();
 }
@@ -576,7 +587,7 @@ fn runtime_sequence(
 ) -> Decision {
     let mut decision = Decision::Deny;
     for target in targets {
-        decision = authz.can_runtime(access, action, target);
+        decision = authz.decide_runtime(access, action, target);
         if decision.is_allowed() {
             break;
         }
@@ -604,7 +615,7 @@ fn bench_can_any_overhead(criterion: &mut Criterion) {
                 ))
             })
         });
-        for n in [2, 3, 4] {
+        for n in [2, 4] {
             group.bench_with_input(
                 BenchmarkId::new(format!("can_any_{n}_deny"), size),
                 &deny,
@@ -842,14 +853,11 @@ fn realistic_authorizer() -> Authorizer {
 }
 fn request_batch(authz: &Authorizer, access: &Access, checks: usize) -> usize {
     (0..checks)
-        .filter(|index| {
-            let decision = match index % 4 {
-                0 => authz.can(access, EditArticle, Article::ident(991)),
-                1 => authz.can(access, EditArticle, Article::ident(999)),
-                2 => authz.can_any(access, EditArticle, (Article::ident(999), Wiki::ident(42))),
-                _ => authz.can_any(access, EditArticle, (Article::ident(999), Wiki::ident(999))),
-            };
-            decision.is_allowed()
+        .filter(|index| match index % 4 {
+            0 => authz.can(access, EditArticle, Article::ident(991)),
+            1 => authz.can(access, EditArticle, Article::ident(999)),
+            2 => authz.can_any(access, EditArticle, (Article::ident(999), Wiki::ident(42))),
+            _ => authz.can_any(access, EditArticle, (Article::ident(999), Wiki::ident(999))),
         })
         .count()
 }

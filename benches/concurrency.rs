@@ -56,7 +56,7 @@ fn throughput(threads: usize, access: Access, writer_every: Option<usize>) -> (u
             start.wait();
             let mut allowed = 0_u64;
             for _ in 0..OPERATIONS_PER_THREAD {
-                if authz.can_runtime(&access, &action, &target).is_allowed() {
+                if authz.can_runtime(&access, &action, &target) {
                     allowed += 1;
                 }
             }
