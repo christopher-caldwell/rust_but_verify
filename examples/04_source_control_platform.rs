@@ -4,7 +4,9 @@
 //! flattens verified memberships, parent relationships, and PR authorship
 //! into the exact role assignments RustButVerify evaluates.
 
-use rust_but_verify::{Access, Authorizer, Model, RoleAssignment, Scope, define_authorization};
+use rust_but_verify::{
+    Access, Authorizer, Policy, RoleAssignment, TargetType, define_authorization,
+};
 
 define_authorization! {
     target Organization = "organization" {
@@ -90,15 +92,15 @@ fn backend_member_access(
 ) -> Access {
     assert_eq!(team.organization.slug, repository.organization.slug);
     Access::new([
-        RoleAssignment::for_target(
+        RoleAssignment::new(
             "organization_member",
             Organization::ident(team.organization.slug),
         ),
-        RoleAssignment::for_target(
+        RoleAssignment::new(
             "repository_writer",
             Repository::ident(repository.scope_id()),
         ),
-        RoleAssignment::for_target("staging_deployer", Environment::ident(staging.scope_id())),
+        RoleAssignment::new("staging_deployer", Environment::ident(staging.scope_id())),
     ])
 }
 
@@ -110,7 +112,7 @@ fn contributor_access(author: &str, pull_request: &PullRequestRecord<'_>) -> Acc
         Repository::ident(pull_request.repository.scope_id()),
     );
     if author == pull_request.author {
-        access.push(RoleAssignment::for_target(
+        access.push(RoleAssignment::new(
             "pull_request_author",
             PullRequest::ident(pull_request.scope_id()),
         ));
@@ -134,22 +136,22 @@ fn may_merge_pull_request(
         .is_allowed()
 }
 
-fn main() -> Result<(), rust_but_verify::ModelError> {
-    let mut policy = Model::builder();
+fn main() -> Result<(), rust_but_verify::PolicyError> {
+    let mut policy = Policy::builder();
     policy
-        .grant("organization_member", ViewOrganization)
-        .grant("repository_writer", Push)
-        .grant("staging_deployer", DeployEnvironment)
-        .grant("repository_admin", Push)
-        .grant("repository_admin", ConfigureRepository)
-        .grant("repository_admin", ManageCollaborators)
-        .grant("repository_admin", MergePullRequest)
-        .grant("repository_contributor", Push)
-        .grant("pull_request_author", EditPullRequest)
-        .grant("pull_request_author", ClosePullRequest)
-        .grant("pull_request_author", RequestReview)
-        .grant("repository_maintainer", MergePullRequest)
-        .grant("production_deployer", DeployEnvironment);
+        .allow("organization_member", ViewOrganization)
+        .allow("repository_writer", Push)
+        .allow("staging_deployer", DeployEnvironment)
+        .allow("repository_admin", Push)
+        .allow("repository_admin", ConfigureRepository)
+        .allow("repository_admin", ManageCollaborators)
+        .allow("repository_admin", MergePullRequest)
+        .allow("repository_contributor", Push)
+        .allow("pull_request_author", EditPullRequest)
+        .allow("pull_request_author", ClosePullRequest)
+        .allow("pull_request_author", RequestReview)
+        .allow("repository_maintainer", MergePullRequest)
+        .allow("production_deployer", DeployEnvironment);
     let authz = Authorizer::new(policy.build()?);
 
     let acme = OrganizationRecord { slug: "acme" };

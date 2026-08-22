@@ -7,8 +7,8 @@ mod typed;
 
 pub use authorizer::{Access, Authorizer, Decision};
 pub use identifiers::{Action, ActionId, RoleAssignment, RoleId, TargetKey};
-pub use model::{Model, ModelBuilder, ModelError};
-pub use typed::{Scope, ScopedBy, Target};
+pub use model::{Policy, PolicyBuilder, PolicyError};
+pub use typed::{ActionOn, Target, TargetType};
 
 /// Declares authorization target types and the actions that can be checked on
 /// them.
@@ -36,7 +36,7 @@ pub use typed::{Scope, ScopedBy, Target};
 /// ordinary-Rust equivalents:
 ///
 /// ```compile_fail
-/// use rust_but_verify::{define_authorization, Scope, ScopedBy, Target};
+/// use rust_but_verify::{define_authorization, ActionOn, Target, TargetType};
 ///
 /// define_authorization! {
 ///     target KnowledgeBase = "knowledge_base" {
@@ -47,8 +47,8 @@ pub use typed::{Scope, ScopedBy, Target};
 ///
 /// fn accepts_pair<A, S>(_action: A, _target: Target<S>)
 /// where
-///     A: ScopedBy<S>,
-///     S: Scope,
+///     A: ActionOn<S>,
+///     S: TargetType,
 /// {}
 ///
 /// // ReadArticle is declared for KnowledgeBase, not Wiki.
@@ -73,7 +73,7 @@ macro_rules! define_authorization {
         $(
             pub struct $target;
 
-            impl $crate::Scope for $target {
+            impl $crate::TargetType for $target {
                 const KIND: &'static str = $kind;
             }
 
@@ -88,7 +88,7 @@ macro_rules! define_authorization {
                         }
                     }
 
-                    impl $crate::ScopedBy<$target> for $action {}
+                    impl $crate::ActionOn<$target> for $action {}
                 )*
             )*
         )*
@@ -104,7 +104,7 @@ macro_rules! define_authorization {
             }
 
             $(
-                impl $crate::ScopedBy<$shared_target> for $shared_action {}
+                impl $crate::ActionOn<$shared_target> for $shared_action {}
             )+
         )*
     };

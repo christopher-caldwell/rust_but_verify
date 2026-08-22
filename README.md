@@ -10,7 +10,7 @@ application has not declared compatible.
 
 ```rust
 use rust_but_verify::{
-    Access, Action, ActionId, Authorizer, Model, Scope, ScopedBy,
+    Access, Action, ActionId, Authorizer, Policy, TargetType, ActionOn,
 };
 
 mod scheduling {
@@ -30,16 +30,16 @@ mod scheduling {
 
 struct Show;
 
-impl Scope for Show {
+impl TargetType for Show {
     const KIND: &'static str = "show";
 }
 
-impl ScopedBy<Show> for scheduling::Edit {}
+impl ActionOn<Show> for scheduling::Edit {}
 
 let runtime_policy = [("show_producer", ActionId::new("scheduling.edit"))];
-let mut builder = Model::builder();
+let mut builder = Policy::builder();
 for (role, action) in runtime_policy {
-    builder.grant(role, action);
+    builder.allow(role, action);
 }
 
 let authz = Authorizer::new(builder.build()?);
@@ -48,14 +48,14 @@ let access = Access::with_role("show_producer", Show::ident("midnight-signal"));
 assert!(authz
     .can(&access, scheduling::EDIT, Show::ident("midnight-signal"))
     .is_allowed());
-# Ok::<(), rust_but_verify::ModelError>(())
+# Ok::<(), rust_but_verify::PolicyError>(())
 ```
 
 Read the examples in order. Each one adds one layer to the previous model:
 
 1. `examples/01_internal_knowledge_base.rs` — **Role**: a user receives a role
    and the role grants article permissions. It uses macro declarations.
-2. `examples/02_community_server.rs` — **Scope**: a user's role applies only in
+2. `examples/02_community_server.rs` — **TargetType**: a user's role applies only in
    the named community.
 3. `examples/03_deployment_platform.rs` — **Relationships**: users and service
    accounts act on projects and environments after the application establishes
@@ -86,10 +86,10 @@ domain relationships before selecting a target to check.
 Unknown roles and actions do not grant access. An optional known-action set can
 reject misspelled runtime action keys while building a model.
 
-## Model refresh
+## Policy refresh
 
 Build and validate a complete candidate model before installing it. Calling
-`Authorizer::replace_model` swaps an already-built model atomically;
+`Authorizer::replace_policy` swaps an already-built model atomically;
 `Authorizer::try_replace` builds a candidate and leaves the active model intact
 if validation fails.
 
@@ -97,7 +97,7 @@ if validation fails.
 
 Use `define_authorization!` for routine declarations, as Examples 1 through 4
 do. For an equivalent non-macro declaration, see Example 5: it implements
-`Scope`, `Action`, and `ScopedBy` directly while preserving the same typed
+`TargetType`, `Action`, and `ActionOn` directly while preserving the same typed
 checks and behavior as Example 1.
 
 The macro keeps routine action, target, and compatibility declarations concise.

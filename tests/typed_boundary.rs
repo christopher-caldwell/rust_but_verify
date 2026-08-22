@@ -1,4 +1,4 @@
-use rust_but_verify::{Action, ActionId, Model, Scope, ScopedBy, TargetKey};
+use rust_but_verify::{Action, ActionId, ActionOn, Policy, TargetKey, TargetType};
 
 #[derive(Clone, Copy)]
 struct Edit;
@@ -11,18 +11,18 @@ impl Action for Edit {
 
 struct Child;
 
-impl Scope for Child {
+impl TargetType for Child {
     const KIND: &'static str = "child";
 }
 
 struct Schedule;
 
-impl Scope for Schedule {
+impl TargetType for Schedule {
     const KIND: &'static str = "schedule";
 }
 
-impl ScopedBy<Child> for Edit {}
-impl ScopedBy<Schedule> for Edit {}
+impl ActionOn<Child> for Edit {}
+impl ActionOn<Schedule> for Edit {}
 
 #[test]
 fn consumer_declares_typed_actions_scopes_and_targets() {
@@ -32,8 +32,8 @@ fn consumer_declares_typed_actions_scopes_and_targets() {
     assert_eq!(child.target_key(), &TargetKey::new("child", "123"));
     assert_eq!(schedule.target_key(), &TargetKey::new("schedule", "456"));
 
-    let mut builder = Model::builder();
-    builder.grant("parent", Edit);
+    let mut builder = Policy::builder();
+    builder.allow("parent", Edit);
     let model = builder.build().expect("typed action should build");
 
     assert!(model.role_grants(&"parent".into(), &ActionId::new("scheduling.edit")));

@@ -5,13 +5,13 @@ use std::fmt;
 use crate::{Action, ActionId, RoleId};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct Model {
+pub struct Policy {
     grants: HashMap<RoleId, HashSet<ActionId>>,
 }
 
-impl Model {
-    pub fn builder() -> ModelBuilder {
-        ModelBuilder::new()
+impl Policy {
+    pub fn builder() -> PolicyBuilder {
+        PolicyBuilder::new()
     }
 
     pub fn role_grants(&self, role: &RoleId, action: &ActionId) -> bool {
@@ -22,17 +22,17 @@ impl Model {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct ModelBuilder {
+pub struct PolicyBuilder {
     grants: HashMap<RoleId, HashSet<ActionId>>,
     known_actions: Option<HashSet<ActionId>>,
 }
 
-impl ModelBuilder {
+impl PolicyBuilder {
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn grant(&mut self, role: impl Into<RoleId>, action: impl Action) -> &mut Self {
+    pub fn allow(&mut self, role: impl Into<RoleId>, action: impl Action) -> &mut Self {
         self.grants
             .entry(role.into())
             .or_default()
@@ -54,15 +54,15 @@ impl ModelBuilder {
         self
     }
 
-    pub fn build(self) -> Result<Model, ModelError> {
+    pub fn build(self) -> Result<Policy, PolicyError> {
         for (role, actions) in &self.grants {
             if role.as_str().is_empty() {
-                return Err(ModelError::EmptyRole);
+                return Err(PolicyError::EmptyRole);
             }
 
             for action in actions {
                 if action.as_str().is_empty() {
-                    return Err(ModelError::EmptyActionId {
+                    return Err(PolicyError::EmptyActionId {
                         action: action.clone(),
                     });
                 }
@@ -72,27 +72,27 @@ impl ModelBuilder {
                     .as_ref()
                     .is_some_and(|known| !known.contains(action))
                 {
-                    return Err(ModelError::UnknownAction {
+                    return Err(PolicyError::UnknownAction {
                         action: action.clone(),
                     });
                 }
             }
         }
 
-        Ok(Model {
+        Ok(Policy {
             grants: self.grants,
         })
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ModelError {
+pub enum PolicyError {
     EmptyRole,
     EmptyActionId { action: ActionId },
     UnknownAction { action: ActionId },
 }
 
-impl fmt::Display for ModelError {
+impl fmt::Display for PolicyError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::EmptyRole => formatter.write_str("role identifier must not be empty"),
@@ -104,7 +104,7 @@ impl fmt::Display for ModelError {
     }
 }
 
-impl Error for ModelError {}
+impl Error for PolicyError {}
 
 #[cfg(test)]
 mod tests {
@@ -122,63 +122,63 @@ mod tests {
     #[test]
     fn builds_runtime_defined_roles_and_grants() {
         let edit = ActionId::new("scheduling.edit");
-        let mut builder = Model::builder();
-        builder.grant("parent", edit.clone());
+        let mut builder = Policy::builder();
+        builder.allow("parent", edit.clone());
 
-        let model = builder.build().expect("runtime model should be valid");
+        let policy = builder.build().expect("runtime policy should be valid");
 
-        assert!(model.role_grants(&RoleId::new("parent"), &edit));
-        assert!(!model.role_grants(&RoleId::new("youth"), &edit));
+        assert!(policy.role_grants(&RoleId::new("parent"), &edit));
+        assert!(!policy.role_grants(&RoleId::new("youth"), &edit));
     }
 
     #[test]
     fn accepts_typed_actions_without_catalog_registration() {
-        let mut builder = Model::builder();
-        builder.grant("parent", Edit);
+        let mut builder = Policy::builder();
+        builder.allow("parent", Edit);
 
-        let model = builder.build().expect("typed grant should be valid");
+        let policy = builder.build().expect("typed allow should be valid");
 
-        assert!(model.role_grants(&RoleId::new("parent"), &ActionId::new("scheduling.edit")));
+        assert!(policy.role_grants(&RoleId::new("parent"), &ActionId::new("scheduling.edit")));
     }
 
     #[test]
     fn optional_validation_rejects_unknown_actions() {
         let edit = ActionId::new("scheduling.edit");
         let typo = ActionId::new("scheduling.edti");
-        let mut builder = Model::builder();
+        let mut builder = Policy::builder();
         builder
             .validate_actions([edit])
-            .grant("parent", typo.clone());
+            .allow("parent", typo.clone());
 
         assert_eq!(
             builder.build(),
-            Err(ModelError::UnknownAction { action: typo })
+            Err(PolicyError::UnknownAction { action: typo })
         );
     }
 
     #[test]
     fn runtime_actions_do_not_require_a_catalog() {
         let custom = ActionId::new("application.runtime-defined");
-        let mut builder = Model::builder();
-        builder.grant("custom-role", custom.clone());
+        let mut builder = Policy::builder();
+        builder.allow("custom-role", custom.clone());
 
-        let model = builder.build().expect("catalog should be optional");
+        let policy = builder.build().expect("catalog should be optional");
 
-        assert!(model.role_grants(&RoleId::new("custom-role"), &custom));
+        assert!(policy.role_grants(&RoleId::new("custom-role"), &custom));
     }
 
     #[test]
     fn rejects_empty_runtime_identifiers() {
-        let mut empty_role = Model::builder();
-        empty_role.grant("", ActionId::new("scheduling.edit"));
-        assert_eq!(empty_role.build(), Err(ModelError::EmptyRole));
+        let mut empty_role = Policy::builder();
+        empty_role.allow("", ActionId::new("scheduling.edit"));
+        assert_eq!(empty_role.build(), Err(PolicyError::EmptyRole));
 
         let empty_name = ActionId::new("");
-        let mut empty_action = Model::builder();
-        empty_action.grant("parent", empty_name.clone());
+        let mut empty_action = Policy::builder();
+        empty_action.allow("parent", empty_name.clone());
         assert_eq!(
             empty_action.build(),
-            Err(ModelError::EmptyActionId { action: empty_name })
+            Err(PolicyError::EmptyActionId { action: empty_name })
         );
     }
 }

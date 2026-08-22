@@ -1,6 +1,6 @@
 use rust_but_verify::{
-    Access, Action, ActionId, Authorizer, Decision, Model, ModelError, RoleAssignment, Scope,
-    ScopedBy, TargetKey,
+    Access, Action, ActionId, ActionOn, Authorizer, Decision, Policy, PolicyError, RoleAssignment,
+    TargetKey, TargetType,
 };
 
 #[derive(Clone, Copy)]
@@ -23,36 +23,36 @@ impl Action for Delete {
 
 struct Child;
 
-impl Scope for Child {
+impl TargetType for Child {
     const KIND: &'static str = "child";
 }
 
 struct Schedule;
 
-impl Scope for Schedule {
+impl TargetType for Schedule {
     const KIND: &'static str = "schedule";
 }
 
-impl ScopedBy<Child> for Edit {}
-impl ScopedBy<Schedule> for Edit {}
-impl ScopedBy<Child> for Delete {}
+impl ActionOn<Child> for Edit {}
+impl ActionOn<Schedule> for Edit {}
+impl ActionOn<Child> for Delete {}
 
-fn model(policy: &[(&str, ActionId)]) -> Result<Model, ModelError> {
-    let mut builder = Model::builder();
-    for (role, action) in policy {
-        builder.grant(*role, action);
+fn policy(permissions: &[(&str, ActionId)]) -> Result<Policy, PolicyError> {
+    let mut builder = Policy::builder();
+    for (role, action) in permissions {
+        builder.allow(*role, action);
     }
     builder.build()
 }
 
 fn assignment(role: &str, namespace: &str, identifier: &str) -> RoleAssignment {
-    RoleAssignment::new(role, TargetKey::new(namespace, identifier))
+    RoleAssignment::from_key(role, TargetKey::new(namespace, identifier))
 }
 
 #[test]
 fn minimum_v0_behavior_works_as_a_complete_consumer_flow() {
     let edit = ActionId::new("scheduling.edit");
-    let authz = Authorizer::new(model(&[("parent", edit.clone())]).unwrap());
+    let authz = Authorizer::new(policy(&[("parent", edit.clone())]).unwrap());
     let access = Access::new([
         assignment("unknown", "child", "123"),
         assignment("parent", "schedule", "456"),
@@ -82,14 +82,14 @@ fn minimum_v0_behavior_works_as_a_complete_consumer_flow() {
         Decision::Deny
     );
 
-    let mut invalid = Model::builder();
+    let mut invalid = Policy::builder();
     invalid
         .validate_actions([edit.clone()])
-        .grant("parent", ActionId::new("scheduling.edti"));
+        .allow("parent", ActionId::new("scheduling.edti"));
     assert!(authz.try_replace(invalid).is_err());
     assert!(authz.can(&access, Edit, Child::ident("123")).is_allowed());
 
-    authz.replace_model(model(&[("youth", edit)]).unwrap());
+    authz.replace_policy(policy(&[("youth", edit)]).unwrap());
     assert_eq!(
         authz.can(&access, Edit, Child::ident("123")),
         Decision::Deny

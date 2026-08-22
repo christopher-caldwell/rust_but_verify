@@ -5,7 +5,9 @@
 //! The application establishes the `Environment -> Project` relationship
 //! before selecting which scope to check.
 
-use rust_but_verify::{Access, Authorizer, Model, RoleAssignment, Scope, define_authorization};
+use rust_but_verify::{
+    Access, Authorizer, Policy, RoleAssignment, TargetType, define_authorization,
+};
 
 define_authorization! {
     target Project = "project" {
@@ -76,22 +78,22 @@ fn may_deploy_to_environment(
         .is_allowed()
 }
 
-fn main() -> Result<(), rust_but_verify::ModelError> {
-    let mut policy = Model::builder();
+fn main() -> Result<(), rust_but_verify::PolicyError> {
+    let mut policy = Policy::builder();
     policy
-        .grant("owner", ViewProject)
-        .grant("owner", ConfigureProject)
-        .grant("owner", CreateDeployment)
-        .grant("owner", ViewDeployment)
-        .grant("owner", CancelDeployment)
-        .grant("owner", PromoteDeployment)
-        .grant("developer", ViewProject)
-        .grant("developer", CreateDeployment)
-        .grant("developer", ViewDeployment)
-        .grant("developer", CancelDeployment)
-        .grant("deployer", CreateDeployment)
-        .grant("deployer", ViewDeployment)
-        .grant("deployer", DeployEnvironment);
+        .allow("owner", ViewProject)
+        .allow("owner", ConfigureProject)
+        .allow("owner", CreateDeployment)
+        .allow("owner", ViewDeployment)
+        .allow("owner", CancelDeployment)
+        .allow("owner", PromoteDeployment)
+        .allow("developer", ViewProject)
+        .allow("developer", CreateDeployment)
+        .allow("developer", ViewDeployment)
+        .allow("developer", CancelDeployment)
+        .allow("deployer", CreateDeployment)
+        .allow("deployer", ViewDeployment)
+        .allow("deployer", DeployEnvironment);
     let authz = Authorizer::new(policy.build()?);
 
     let billing_api = ProjectRecord {
@@ -117,8 +119,8 @@ fn main() -> Result<(), rust_but_verify::ModelError> {
     let github_ci = ServiceAccount {
         name: "github-ci",
         access: Access::new([
-            RoleAssignment::for_target("deployer", Project::ident("billing-api")),
-            RoleAssignment::for_target("deployer", Environment::ident(staging.scope_id())),
+            RoleAssignment::new("deployer", Project::ident("billing-api")),
+            RoleAssignment::new("deployer", Environment::ident(staging.scope_id())),
         ]),
     };
 
