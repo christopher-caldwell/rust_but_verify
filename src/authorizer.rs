@@ -1,7 +1,7 @@
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{
-    ActionId, ActionOn, Policy, PolicyBuilder, PolicyError, RoleAssignment, RoleId, Target,
+    Action, ActionId, ActionOn, Policy, PolicyBuilder, PolicyError, RoleAssignment, RoleId, Target,
     TargetKey, TargetType,
 };
 
@@ -86,9 +86,46 @@ mod access_tests {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Decision {
-    Allow { via_role: RoleId },
+    Allow {
+        via_role: RoleId,
+        via_target: TargetKey,
+    },
     Deny,
 }
+
+/// A heterogeneous tuple of typed targets accepted by [`Authorizer::can_any`].
+///
+/// Implementations are provided for tuples containing two through four targets.
+/// Each target must be declared compatible with the requested action.
+pub trait CanAnyTargets<A>: Sized {
+    #[doc(hidden)]
+    fn evaluate(self, authorizer: &Authorizer, access: &Access, action: &ActionId) -> Decision;
+}
+
+macro_rules! impl_can_any_targets {
+    ($($target:ident),+) => {
+        impl<A, $($target),+> CanAnyTargets<A> for ($(Target<$target>,)+)
+        where
+            $(A: ActionOn<$target>, $target: TargetType,)+
+        {
+            #[allow(non_snake_case)]
+            fn evaluate(self, authorizer: &Authorizer, access: &Access, action: &ActionId) -> Decision {
+                let ($($target,)+) = self;
+                $(
+                    let decision = authorizer.can_runtime(access, action, $target.target_key());
+                    if decision.is_allowed() {
+                        return decision;
+                    }
+                )+
+                Decision::Deny
+            }
+        }
+    };
+}
+
+impl_can_any_targets!(First, Second);
+impl_can_any_targets!(First, Second, Third);
+impl_can_any_targets!(First, Second, Third, Fourth);
 
 impl Decision {
     pub fn is_allowed(&self) -> bool {
@@ -116,6 +153,31 @@ impl Authorizer {
         self.can_runtime(access, &action.action_id(), target.target_key())
     }
 
+    /// Checks typed candidate targets in tuple order using the same exact-match
+    /// evaluation as [`Self::can`].
+    ///
+    /// ```compile_fail
+    /// use rust_but_verify::{Access, Action, ActionId, ActionOn, Authorizer, Policy, TargetType};
+    ///
+    /// struct Edit;
+    /// impl Action for Edit { fn action_id(&self) -> ActionId { ActionId::new("edit") } }
+    /// struct Article;
+    /// impl TargetType for Article { const KIND: &'static str = "article"; }
+    /// struct Wiki;
+    /// impl TargetType for Wiki { const KIND: &'static str = "wiki"; }
+    /// impl ActionOn<Article> for Edit {}
+    ///
+    /// let authz = Authorizer::new(Policy::builder().build().unwrap());
+    /// authz.can_any(&Access::empty(), Edit, (Article::ident(1), Wiki::ident(1)));
+    /// ```
+    pub fn can_any<A, T>(&self, access: &Access, action: A, targets: T) -> Decision
+    where
+        A: Action,
+        T: CanAnyTargets<A>,
+    {
+        targets.evaluate(self, access, &action.action_id())
+    }
+
     pub fn can_runtime(&self, access: &Access, action: &ActionId, target: &TargetKey) -> Decision {
         let policy = self.read_policy();
 
@@ -127,6 +189,7 @@ impl Authorizer {
             })
             .map_or(Decision::Deny, |assignment| Decision::Allow {
                 via_role: assignment.role().clone(),
+                via_target: target.clone(),
             })
     }
 
@@ -204,7 +267,8 @@ mod tests {
         assert_eq!(
             authorizer.can(&access, Edit, Child::ident("123")),
             Decision::Allow {
-                via_role: RoleId::new("parent")
+                via_role: RoleId::new("parent"),
+                via_target: TargetKey::new("child", "123"),
             }
         );
     }
@@ -252,6 +316,25 @@ mod tests {
             assigned("youth", "123"),
             assigned("parent", "123"),
         ]);
+
+        assert!(
+            authorizer
+                .can(&access, Edit, Child::ident("123"))
+                .is_allowed()
+        );
+    }
+
+    #[test]
+    fn adding_access_facts_requires_no_policy_replacement() {
+        let authorizer = Authorizer::new(policy_with("parent", Edit));
+        let mut access = Access::empty();
+
+        assert_eq!(
+            authorizer.can(&access, Edit, Child::ident("123")),
+            Decision::Deny
+        );
+
+        access.add_role("parent", Child::ident("123"));
 
         assert!(
             authorizer

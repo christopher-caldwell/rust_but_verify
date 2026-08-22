@@ -35,6 +35,14 @@ impl TargetType for Wiki {
 impl ActionOn<Article> for Edit {}
 impl ActionOn<Wiki> for Edit {}
 
+struct Organization;
+
+impl TargetType for Organization {
+    const KIND: &'static str = "organization";
+}
+
+impl ActionOn<Organization> for Edit {}
+
 #[test]
 fn consumer_can_authorize_with_typed_values() {
     let mut builder = Policy::builder();
@@ -47,7 +55,8 @@ fn consumer_can_authorize_with_typed_values() {
     assert_eq!(
         authorizer.can(&access, Edit, Child::ident("123")),
         Decision::Allow {
-            via_role: "parent".into()
+            via_role: "parent".into(),
+            via_target: TargetKey::new("child", "123"),
         }
     );
 }
@@ -91,4 +100,111 @@ fn target_idents_accept_slug_uuid_and_composite_values() {
             .identifier(),
         "acme:payments-api:production"
     );
+}
+
+#[test]
+fn can_any_uses_candidate_order_then_access_order_for_metadata() {
+    let mut builder = Policy::builder();
+    builder
+        .allow("wiki_editor", Edit)
+        .allow("article_owner", Edit)
+        .allow("first_article_role", Edit)
+        .allow("second_article_role", Edit);
+    let authorizer = Authorizer::new(builder.build().expect("policy should be valid"));
+
+    let alice = Access::with_role("wiki_editor", Wiki::ident(42));
+    let bob = Access::with_role("article_owner", Article::ident(991));
+    let charlie = Access::with_role("wiki_editor", Wiki::ident(7));
+    let ordered = Access::new([
+        RoleAssignment::new("first_article_role", Article::ident(991)),
+        RoleAssignment::new("second_article_role", Article::ident(991)),
+    ]);
+
+    assert_eq!(
+        authorizer.can_any(&alice, Edit, (Article::ident(991), Wiki::ident(42))),
+        Decision::Allow {
+            via_role: "wiki_editor".into(),
+            via_target: TargetKey::new("wiki", 42),
+        }
+    );
+    assert_eq!(
+        authorizer.can_any(
+            &bob,
+            Edit,
+            (Wiki::ident(42), Article::ident(991), Child::ident("unused")),
+        ),
+        Decision::Allow {
+            via_role: "article_owner".into(),
+            via_target: TargetKey::new("article", 991),
+        }
+    );
+    assert_eq!(
+        authorizer.can_any(
+            &ordered,
+            Edit,
+            (
+                Article::ident(991),
+                Wiki::ident(42),
+                Child::ident("unused"),
+                Organization::ident("acme"),
+            ),
+        ),
+        Decision::Allow {
+            via_role: "first_article_role".into(),
+            via_target: TargetKey::new("article", 991),
+        }
+    );
+    assert_eq!(
+        authorizer.can_any(
+            &charlie,
+            Edit,
+            (
+                Article::ident(991),
+                Wiki::ident(42),
+                Organization::ident("acme")
+            ),
+        ),
+        Decision::Deny
+    );
+}
+
+#[test]
+fn ordinary_can_requires_the_exact_assigned_target() {
+    let mut builder = Policy::builder();
+    builder
+        .allow("wiki_editor", Edit)
+        .allow("article_owner", Edit);
+    let authorizer = Authorizer::new(builder.build().expect("policy should be valid"));
+
+    let alice = Access::with_role("wiki_editor", Wiki::ident(42));
+    let bob = Access::with_role("article_owner", Article::ident(991));
+
+    assert_eq!(
+        authorizer.can(&alice, Edit, Wiki::ident(42)),
+        Decision::Allow {
+            via_role: "wiki_editor".into(),
+            via_target: TargetKey::new("wiki", 42),
+        }
+    );
+    assert_eq!(
+        authorizer.can(&alice, Edit, Wiki::ident(43)),
+        Decision::Deny
+    );
+    assert_eq!(
+        authorizer.can(&alice, Edit, Article::ident(991)),
+        Decision::Deny
+    );
+
+    assert_eq!(
+        authorizer.can(&bob, Edit, Article::ident(991)),
+        Decision::Allow {
+            via_role: "article_owner".into(),
+            via_target: TargetKey::new("article", 991),
+        }
+    );
+    assert_eq!(
+        authorizer.can(&bob, Edit, Article::ident(992)),
+        Decision::Deny
+    );
+    assert_eq!(authorizer.can(&bob, Edit, Wiki::ident(42)), Decision::Deny);
 }

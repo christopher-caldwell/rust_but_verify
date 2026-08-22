@@ -5,7 +5,7 @@ mod identifiers;
 mod model;
 mod typed;
 
-pub use authorizer::{Access, Authorizer, Decision};
+pub use authorizer::{Access, Authorizer, CanAnyTargets, Decision};
 pub use identifiers::{Action, ActionId, RoleAssignment, RoleId, TargetKey};
 pub use model::{Policy, PolicyBuilder, PolicyError};
 pub use typed::{ActionOn, Target, TargetType};
