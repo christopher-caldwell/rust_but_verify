@@ -41,7 +41,9 @@ builder.allow("show_producer", Edit);
 let authz = Authorizer::new(builder.build()?);
 let access = Access::with_role("show_producer", Show::ident("midnight-signal"));
 
-assert!(authz.can(&access, Edit, Show::ident("midnight-signal")));
+if authz.can(&access, Edit, Show::ident("midnight-signal")) {
+    // Allow the edit.
+}
 # Ok::<(), rust_but_verify::PolicyError>(())
 ```
 
@@ -55,6 +57,22 @@ first successful authorization path, use `decide`; it returns
 `Decision` is optional provenance, not an exhaustive explanation: if more than
 one path could allow an action, it reports only the first successful path in
 the API's evaluation order.
+
+```rust
+# use rust_but_verify::{Access, Action, ActionId, ActionOn, Authorizer, Decision, Policy, TargetType};
+# #[derive(Clone, Copy)] struct Edit;
+# impl Action for Edit { fn action_id(&self) -> ActionId { ActionId::new("show.edit") } }
+# struct Show; impl TargetType for Show { const KIND: &'static str = "show"; }
+# impl ActionOn<Show> for Edit {}
+# let mut policy = Policy::builder(); policy.allow("show_producer", Edit);
+# let authz = Authorizer::new(policy.build()?);
+# let access = Access::with_role("show_producer", Show::ident("midnight-signal"));
+match authz.decide(&access, Edit, Show::ident("midnight-signal")) {
+    Decision::Allow { via_role, via_target } => println!("allowed by {via_role:?} at {via_target:?}"),
+    Decision::Deny => println!("denied"),
+}
+# Ok::<(), rust_but_verify::PolicyError>(())
+```
 
 For a small “this OR that” check, `can_any` and `decide_any` accept an
 exactly-two-target tuple. The tuple is evaluated left to right. They hold one
@@ -84,16 +102,21 @@ an article and its already-verified wiki); RustButVerify does not discover
 domain relationships.
 
 ```rust
-# use rust_but_verify::{Action, ActionId, ActionOn, TargetType, Targets};
+# use rust_but_verify::{Access, Action, ActionId, ActionOn, Authorizer, Policy, TargetType, Targets};
 # #[derive(Clone, Copy)] struct Edit;
 # impl Action for Edit { fn action_id(&self) -> ActionId { ActionId::new("show.edit") } }
 # struct Show; impl TargetType for Show { const KIND: &'static str = "show"; }
 # struct Collection; impl TargetType for Collection { const KIND: &'static str = "collection"; }
 # impl ActionOn<Show> for Edit {}
 # impl ActionOn<Collection> for Edit {}
+# let mut policy = Policy::builder(); policy.allow("collection_editor", Edit);
+# let authz = Authorizer::new(policy.build()?);
+# let access = Access::with_role("collection_editor", Collection::ident("drama"));
 let targets = Targets::<Edit>::new()
     .add(Show::ident("midnight-signal"))
     .add(Collection::ident("drama"));
+assert!(authz.can_any(&access, Edit, targets));
+# Ok::<(), rust_but_verify::PolicyError>(())
 ```
 
 ## Examples
