@@ -1,8 +1,8 @@
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{
-    ActionKey, Model, ModelBuilder, ModelError, RoleAssignment, RoleId, Scope, ScopeKey, ScopedBy,
-    Target,
+    ActionId, Model, ModelBuilder, ModelError, RoleAssignment, RoleId, Scope, ScopedBy, Target,
+    TargetKey,
 };
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -19,6 +19,23 @@ impl Access {
 
     pub fn empty() -> Self {
         Self::default()
+    }
+
+    /// Creates access containing one role assignment at a typed target.
+    pub fn with_role<S>(role: impl Into<RoleId>, target: Target<S>) -> Self
+    where
+        S: Scope,
+    {
+        Self::new([RoleAssignment::for_target(role, target)])
+    }
+
+    /// Adds one role assignment at a typed target.
+    pub fn add_role<S>(&mut self, role: impl Into<RoleId>, target: Target<S>) -> &mut Self
+    where
+        S: Scope,
+    {
+        self.push(RoleAssignment::for_target(role, target));
+        self
     }
 
     pub fn push(&mut self, assignment: RoleAssignment) {
@@ -65,17 +82,17 @@ impl Authorizer {
         A: ScopedBy<S>,
         S: Scope,
     {
-        self.can_runtime(access, &action.action_key(), target.scope_key())
+        self.can_runtime(access, &action.action_id(), target.target_key())
     }
 
-    pub fn can_runtime(&self, access: &Access, action: &ActionKey, scope: &ScopeKey) -> Decision {
+    pub fn can_runtime(&self, access: &Access, action: &ActionId, target: &TargetKey) -> Decision {
         let model = self.read_model();
 
         access
             .assignments()
             .iter()
             .find(|assignment| {
-                assignment.scope() == scope && model.role_grants(assignment.role(), action)
+                assignment.target() == target && model.role_grants(assignment.role(), action)
             })
             .map_or(Decision::Deny, |assignment| Decision::Allow {
                 via_role: assignment.role().clone(),
@@ -113,8 +130,8 @@ mod tests {
     struct Edit;
 
     impl Action for Edit {
-        fn action_key(&self) -> ActionKey {
-            ActionKey::new("scheduling", "edit")
+        fn action_id(&self) -> ActionId {
+            ActionId::new("scheduling.edit")
         }
     }
 
@@ -122,15 +139,15 @@ mod tests {
     struct Delete;
 
     impl Action for Delete {
-        fn action_key(&self) -> ActionKey {
-            ActionKey::new("scheduling", "delete")
+        fn action_id(&self) -> ActionId {
+            ActionId::new("scheduling.delete")
         }
     }
 
     struct Child;
 
     impl Scope for Child {
-        const NAMESPACE: &'static str = "child";
+        const KIND: &'static str = "child";
     }
 
     impl ScopedBy<Child> for Edit {}
@@ -143,7 +160,7 @@ mod tests {
     }
 
     fn assigned(role: &str, child: &str) -> RoleAssignment {
-        RoleAssignment::new(role, ScopeKey::new("child", child))
+        RoleAssignment::new(role, TargetKey::new("child", child))
     }
 
     #[test]
@@ -183,8 +200,8 @@ mod tests {
         assert_eq!(
             authorizer.can_runtime(
                 &matching,
-                &ActionKey::new("scheduling", "unknown"),
-                &ScopeKey::new("child", "123")
+                &ActionId::new("scheduling.unknown"),
+                &TargetKey::new("child", "123")
             ),
             Decision::Deny
         );
@@ -232,11 +249,11 @@ mod tests {
     fn failed_candidate_leaves_active_model_usable() {
         let authorizer = Authorizer::new(model_with("parent", Edit));
         let access = Access::new([assigned("parent", "123")]);
-        let edit = ActionKey::new("scheduling", "edit");
+        let edit = ActionId::new("scheduling.edit");
         let mut invalid = Model::builder();
         invalid
             .validate_actions([edit])
-            .grant("parent", ActionKey::new("scheduling", "edti"));
+            .grant("parent", ActionId::new("scheduling.edti"));
 
         assert!(matches!(
             authorizer.try_replace(invalid),

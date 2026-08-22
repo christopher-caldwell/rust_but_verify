@@ -6,7 +6,7 @@
 //! before selecting which scope to check.
 
 use rust_but_verify::{
-    Access, Action, ActionKey, Authorizer, Model, RoleAssignment, Scope, ScopeKey, ScopedBy,
+    Access, Action, ActionId, Authorizer, Model, RoleAssignment, Scope, ScopedBy, TargetKey,
 };
 
 #[derive(Clone, Copy)]
@@ -26,44 +26,44 @@ struct DeployEnvironment;
 
 // Each typed action exposes the runtime permission it represents.
 impl Action for ViewProject {
-    fn action_key(&self) -> ActionKey {
-        ActionKey::new("project", "view")
+    fn action_id(&self) -> ActionId {
+        ActionId::new("project.view")
     }
 }
 
 impl Action for ConfigureProject {
-    fn action_key(&self) -> ActionKey {
-        ActionKey::new("project", "configure")
+    fn action_id(&self) -> ActionId {
+        ActionId::new("project.configure")
     }
 }
 
 impl Action for CreateDeployment {
-    fn action_key(&self) -> ActionKey {
-        ActionKey::new("deployment", "create")
+    fn action_id(&self) -> ActionId {
+        ActionId::new("deployment.create")
     }
 }
 
 impl Action for ViewDeployment {
-    fn action_key(&self) -> ActionKey {
-        ActionKey::new("deployment", "view")
+    fn action_id(&self) -> ActionId {
+        ActionId::new("deployment.view")
     }
 }
 
 impl Action for CancelDeployment {
-    fn action_key(&self) -> ActionKey {
-        ActionKey::new("deployment", "cancel")
+    fn action_id(&self) -> ActionId {
+        ActionId::new("deployment.cancel")
     }
 }
 
 impl Action for PromoteDeployment {
-    fn action_key(&self) -> ActionKey {
-        ActionKey::new("deployment", "promote")
+    fn action_id(&self) -> ActionId {
+        ActionId::new("deployment.promote")
     }
 }
 
 impl Action for DeployEnvironment {
-    fn action_key(&self) -> ActionKey {
-        ActionKey::new("environment", "deploy")
+    fn action_id(&self) -> ActionId {
+        ActionId::new("environment.deploy")
     }
 }
 
@@ -71,11 +71,11 @@ struct Project;
 struct Environment;
 
 impl Scope for Project {
-    const NAMESPACE: &'static str = "project";
+    const KIND: &'static str = "project";
 }
 
 impl Scope for Environment {
-    const NAMESPACE: &'static str = "environment";
+    const KIND: &'static str = "environment";
 }
 
 impl ScopedBy<Project> for ViewProject {}
@@ -175,21 +175,24 @@ fn main() -> Result<(), rust_but_verify::ModelError> {
         name: "Alice",
         access: Access::new([RoleAssignment::new(
             "owner",
-            ScopeKey::new("project", "billing-api"),
+            TargetKey::new("project", "billing-api"),
         )]),
     };
     let bob = User {
         name: "Bob",
         access: Access::new([RoleAssignment::new(
             "developer",
-            ScopeKey::new("project", "billing-api"),
+            TargetKey::new("project", "billing-api"),
         )]),
     };
     let github_ci = ServiceAccount {
         name: "github-ci",
         access: Access::new([
-            RoleAssignment::new("deployer", ScopeKey::new("project", "billing-api")),
-            RoleAssignment::new("deployer", ScopeKey::new("environment", staging.scope_id())),
+            RoleAssignment::new("deployer", TargetKey::new("project", "billing-api")),
+            RoleAssignment::new(
+                "deployer",
+                TargetKey::new("environment", staging.scope_id()),
+            ),
         ]),
     };
 

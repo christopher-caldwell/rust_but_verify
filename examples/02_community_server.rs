@@ -4,7 +4,7 @@
 //! It answers "what can this user do in this particular community?"
 
 use rust_but_verify::{
-    Access, Action, ActionKey, Authorizer, Model, RoleAssignment, Scope, ScopeKey, ScopedBy,
+    Access, Action, ActionId, Authorizer, Model, RoleAssignment, Scope, ScopedBy, TargetKey,
 };
 
 #[derive(Clone, Copy)]
@@ -21,39 +21,39 @@ struct ConfigureCommunity;
 // Each application action has a stable runtime key. Keeping these declarations
 // explicit makes the policy entries below easy to connect to their meaning.
 impl Action for ViewCommunity {
-    fn action_key(&self) -> ActionKey {
-        ActionKey::new("community", "view")
+    fn action_id(&self) -> ActionId {
+        ActionId::new("community.view")
     }
 }
 
 impl Action for CreateMessage {
-    fn action_key(&self) -> ActionKey {
-        ActionKey::new("message", "create")
+    fn action_id(&self) -> ActionId {
+        ActionId::new("message.create")
     }
 }
 
 impl Action for DeleteMessage {
-    fn action_key(&self) -> ActionKey {
-        ActionKey::new("message", "delete")
+    fn action_id(&self) -> ActionId {
+        ActionId::new("message.delete")
     }
 }
 
 impl Action for ModerateMember {
-    fn action_key(&self) -> ActionKey {
-        ActionKey::new("member", "moderate")
+    fn action_id(&self) -> ActionId {
+        ActionId::new("member.moderate")
     }
 }
 
 impl Action for ConfigureCommunity {
-    fn action_key(&self) -> ActionKey {
-        ActionKey::new("community", "configure")
+    fn action_id(&self) -> ActionId {
+        ActionId::new("community.configure")
     }
 }
 
 struct Community;
 
 impl Scope for Community {
-    const NAMESPACE: &'static str = "community";
+    const KIND: &'static str = "community";
 }
 
 impl ScopedBy<Community> for ViewCommunity {}
@@ -95,22 +95,22 @@ fn main() -> Result<(), rust_but_verify::ModelError> {
     let alice = User {
         name: "Alice",
         access: Access::new([
-            RoleAssignment::new("moderator", ScopeKey::new("community", "rust-developers")),
-            RoleAssignment::new("member", ScopeKey::new("community", "game-night")),
+            RoleAssignment::new("moderator", TargetKey::new("community", "rust-developers")),
+            RoleAssignment::new("member", TargetKey::new("community", "game-night")),
         ]),
     };
     let bob = User {
         name: "Bob",
         access: Access::new([RoleAssignment::new(
             "member",
-            ScopeKey::new("community", "rust-developers"),
+            TargetKey::new("community", "rust-developers"),
         )]),
     };
     let carol = User {
         name: "Carol",
         access: Access::new([RoleAssignment::new(
             "admin",
-            ScopeKey::new("community", "game-night"),
+            TargetKey::new("community", "game-night"),
         )]),
     };
 

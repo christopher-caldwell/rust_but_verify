@@ -4,7 +4,7 @@
 //! base scope, so the only relationship to learn is `User -> Role -> Permission`.
 
 use rust_but_verify::{
-    Access, Action, ActionKey, Authorizer, Model, RoleAssignment, Scope, ScopeKey, ScopedBy,
+    Access, Action, ActionId, Authorizer, Model, RoleAssignment, Scope, ScopedBy, TargetKey,
 };
 
 #[derive(Clone, Copy)]
@@ -17,26 +17,26 @@ struct EditArticle;
 struct DeleteArticle;
 
 impl Action for ReadArticle {
-    fn action_key(&self) -> ActionKey {
-        ActionKey::new("article", "read")
+    fn action_id(&self) -> ActionId {
+        ActionId::new("article.read")
     }
 }
 
 impl Action for CreateArticle {
-    fn action_key(&self) -> ActionKey {
-        ActionKey::new("article", "create")
+    fn action_id(&self) -> ActionId {
+        ActionId::new("article.create")
     }
 }
 
 impl Action for EditArticle {
-    fn action_key(&self) -> ActionKey {
-        ActionKey::new("article", "edit")
+    fn action_id(&self) -> ActionId {
+        ActionId::new("article.edit")
     }
 }
 
 impl Action for DeleteArticle {
-    fn action_key(&self) -> ActionKey {
-        ActionKey::new("article", "delete")
+    fn action_id(&self) -> ActionId {
+        ActionId::new("article.delete")
     }
 }
 
@@ -49,7 +49,7 @@ struct Article {
 struct KnowledgeBase;
 
 impl Scope for KnowledgeBase {
-    const NAMESPACE: &'static str = "knowledge_base";
+    const KIND: &'static str = "knowledge_base";
 }
 
 impl ScopedBy<KnowledgeBase> for ReadArticle {}
@@ -89,21 +89,21 @@ fn main() -> Result<(), rust_but_verify::ModelError> {
         name: "Alice",
         access: Access::new([RoleAssignment::new(
             "editor",
-            ScopeKey::new("knowledge_base", "internal"),
+            TargetKey::new("knowledge_base", "internal"),
         )]),
     };
     let bob = User {
         name: "Bob",
         access: Access::new([RoleAssignment::new(
             "viewer",
-            ScopeKey::new("knowledge_base", "internal"),
+            TargetKey::new("knowledge_base", "internal"),
         )]),
     };
     let carol = User {
         name: "Carol",
         access: Access::new([RoleAssignment::new(
             "admin",
-            ScopeKey::new("knowledge_base", "internal"),
+            TargetKey::new("knowledge_base", "internal"),
         )]),
     };
     let handbook = Article {
