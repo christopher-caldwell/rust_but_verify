@@ -55,20 +55,20 @@ struct PullRequestRecord<'a> {
 }
 
 impl RepositoryRecord<'_> {
-    fn scope_id(&self) -> String {
+    fn target_id(&self) -> String {
         format!("{}:{}", self.organization.slug, self.slug)
     }
 }
 
 impl EnvironmentRecord<'_> {
-    fn scope_id(&self) -> String {
-        format!("{}:{}", self.repository.scope_id(), self.name)
+    fn target_id(&self) -> String {
+        format!("{}:{}", self.repository.target_id(), self.name)
     }
 }
 
 impl PullRequestRecord<'_> {
-    fn scope_id(&self) -> String {
-        format!("{}#{}", self.repository.scope_id(), self.number)
+    fn target_id(&self) -> String {
+        format!("{}#{}", self.repository.target_id(), self.number)
     }
 }
 
@@ -98,23 +98,23 @@ fn backend_member_access(
         ),
         RoleAssignment::new(
             "repository_writer",
-            Repository::ident(repository.scope_id()),
+            Repository::ident(repository.target_id()),
         ),
-        RoleAssignment::new("staging_deployer", Environment::ident(staging.scope_id())),
+        RoleAssignment::new("staging_deployer", Environment::ident(staging.target_id())),
     ])
 }
 
-/// The caller has loaded the PR and checked its author before granting an
+/// The caller has loaded the PR and checked its author before assigning an
 /// author-only role at the PR's exact target.
 fn contributor_access(author: &str, pull_request: &PullRequestRecord<'_>) -> Access {
     let mut access = Access::with_role(
         "repository_contributor",
-        Repository::ident(pull_request.repository.scope_id()),
+        Repository::ident(pull_request.repository.target_id()),
     );
     if author == pull_request.author {
         access.push(RoleAssignment::new(
             "pull_request_author",
-            PullRequest::ident(pull_request.scope_id()),
+            PullRequest::ident(pull_request.target_id()),
         ));
     }
     access
@@ -131,7 +131,7 @@ fn may_merge_pull_request(
         .can(
             access,
             MergePullRequest,
-            Repository::ident(pull_request.repository.scope_id()),
+            Repository::ident(pull_request.repository.target_id()),
         )
         .is_allowed()
 }
@@ -186,7 +186,7 @@ fn main() -> Result<(), rust_but_verify::PolicyError> {
         name: "Bob",
         access: Access::with_role(
             "repository_admin",
-            Repository::ident(payments_api.scope_id()),
+            Repository::ident(payments_api.target_id()),
         ),
     };
     let carol = User {
@@ -197,14 +197,14 @@ fn main() -> Result<(), rust_but_verify::PolicyError> {
         name: "Dana",
         access: Access::with_role(
             "repository_maintainer",
-            Repository::ident(payments_api.scope_id()),
+            Repository::ident(payments_api.target_id()),
         ),
     };
     let deploy_production = ServiceAccount {
         name: "deploy-production",
         access: Access::with_role(
             "production_deployer",
-            Environment::ident(production.scope_id()),
+            Environment::ident(production.target_id()),
         ),
     };
 
@@ -212,21 +212,21 @@ fn main() -> Result<(), rust_but_verify::PolicyError> {
         .can(
             &alice.access,
             Push,
-            Repository::ident(payments_api.scope_id()),
+            Repository::ident(payments_api.target_id()),
         )
         .is_allowed();
     let alice_staging = authz
         .can(
             &alice.access,
             DeployEnvironment,
-            Environment::ident(staging.scope_id()),
+            Environment::ident(staging.target_id()),
         )
         .is_allowed();
     let alice_production = authz
         .can(
             &alice.access,
             DeployEnvironment,
-            Environment::ident(production.scope_id()),
+            Environment::ident(production.target_id()),
         )
         .is_allowed();
     println!("{} pushes through team access: {alice_pushes}", alice.name);
@@ -237,21 +237,21 @@ fn main() -> Result<(), rust_but_verify::PolicyError> {
         .can(
             &bob.access,
             ConfigureRepository,
-            Repository::ident(payments_api.scope_id()),
+            Repository::ident(payments_api.target_id()),
         )
         .is_allowed();
     let bob_pushes = authz
         .can(
             &bob.access,
             Push,
-            Repository::ident(payments_api.scope_id()),
+            Repository::ident(payments_api.target_id()),
         )
         .is_allowed();
     let bob_manages = authz
         .can(
             &bob.access,
             ManageCollaborators,
-            Repository::ident(payments_api.scope_id()),
+            Repository::ident(payments_api.target_id()),
         )
         .is_allowed();
     let bob_merges = may_merge_pull_request(&authz, &bob.access, &pr_42);
@@ -259,7 +259,7 @@ fn main() -> Result<(), rust_but_verify::PolicyError> {
         .can(
             &bob.access,
             DeployEnvironment,
-            Environment::ident(production.scope_id()),
+            Environment::ident(production.target_id()),
         )
         .is_allowed();
     println!("{} configures the repository: {bob_configures}", bob.name);
@@ -272,21 +272,21 @@ fn main() -> Result<(), rust_but_verify::PolicyError> {
         .can(
             &carol.access,
             EditPullRequest,
-            PullRequest::ident(pr_42.scope_id()),
+            PullRequest::ident(pr_42.target_id()),
         )
         .is_allowed();
     let carol_closes = authz
         .can(
             &carol.access,
             ClosePullRequest,
-            PullRequest::ident(pr_42.scope_id()),
+            PullRequest::ident(pr_42.target_id()),
         )
         .is_allowed();
     let carol_requests_review = authz
         .can(
             &carol.access,
             RequestReview,
-            PullRequest::ident(pr_42.scope_id()),
+            PullRequest::ident(pr_42.target_id()),
         )
         .is_allowed();
     let carol_merges = may_merge_pull_request(&authz, &carol.access, &pr_42);
@@ -304,14 +304,14 @@ fn main() -> Result<(), rust_but_verify::PolicyError> {
         .can(
             &deploy_production.access,
             DeployEnvironment,
-            Environment::ident(production.scope_id()),
+            Environment::ident(production.target_id()),
         )
         .is_allowed();
     let service_configures = authz
         .can(
             &deploy_production.access,
             ConfigureRepository,
-            Repository::ident(payments_api.scope_id()),
+            Repository::ident(payments_api.target_id()),
         )
         .is_allowed();
     let service_manages_members = authz

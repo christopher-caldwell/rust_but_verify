@@ -33,7 +33,7 @@ struct EnvironmentRecord<'a> {
 }
 
 impl EnvironmentRecord<'_> {
-    fn scope_id(&self) -> String {
+    fn target_id(&self) -> String {
         format!("{}:{}", self.project.slug, self.name)
     }
 }
@@ -73,7 +73,7 @@ fn may_deploy_to_environment(
         .can(
             access,
             DeployEnvironment,
-            Environment::ident(environment.scope_id()),
+            Environment::ident(environment.target_id()),
         )
         .is_allowed()
 }
@@ -120,7 +120,7 @@ fn main() -> Result<(), rust_but_verify::PolicyError> {
         name: "github-ci",
         access: Access::new([
             RoleAssignment::new("deployer", Project::ident("billing-api")),
-            RoleAssignment::new("deployer", Environment::ident(staging.scope_id())),
+            RoleAssignment::new("deployer", Environment::ident(staging.target_id())),
         ]),
     };
 

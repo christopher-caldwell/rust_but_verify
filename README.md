@@ -54,7 +54,7 @@ assert!(authz
 Read the examples in order. Each one adds one layer to the previous policy:
 
 1. `examples/01_internal_knowledge_base.rs` — **Role**: a user receives a role
-   and the role allows article permissions. It uses macro declarations.
+   and the role permits article actions. It uses macro declarations.
 2. `examples/02_community_server.rs` — **Target**: a user's role applies only in
    the named community.
 3. `examples/03_deployment_platform.rs` — **Relationships**: users and service
@@ -62,7 +62,7 @@ Read the examples in order. Each one adds one layer to the previous policy:
    their relationship.
 4. `examples/04_source_control_platform.rs` — **Composition**: team-derived
    access, direct permissions, parent resources, authorship, and restricted
-   sub-resources combine without granting more than intended.
+   sub-resources combine without allowing more than intended.
 5. `examples/05_internal_knowledge_base_without_macros.rs` — **Manual
    declarations**: functionally identical to Example 1, but intentionally
    written without `define_authorization!`.

@@ -1,4 +1,4 @@
-//! Example 2: roles scoped to one community.
+//! Example 2: roles assigned to one community.
 //!
 //! The new idea is that a role does not answer only "what can this user do?"
 //! It answers "what can this user do in this particular community?"
