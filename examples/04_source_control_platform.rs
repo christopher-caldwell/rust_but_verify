@@ -4,121 +4,28 @@
 //! flattens verified memberships, parent relationships, and PR authorship
 //! into the exact role assignments RustButVerify evaluates.
 
-use rust_but_verify::{
-    Access, Action, ActionId, Authorizer, Model, RoleAssignment, Scope, ScopedBy, TargetKey,
-};
+use rust_but_verify::{Access, Authorizer, Model, RoleAssignment, Scope, define_authorization};
 
-#[derive(Clone, Copy)]
-struct ViewOrganization;
-#[derive(Clone, Copy)]
-struct ManageOrganizationMembers;
-#[derive(Clone, Copy)]
-struct Push;
-#[derive(Clone, Copy)]
-struct ConfigureRepository;
-#[derive(Clone, Copy)]
-struct ManageCollaborators;
-#[derive(Clone, Copy)]
-struct DeployEnvironment;
-#[derive(Clone, Copy)]
-struct EditPullRequest;
-#[derive(Clone, Copy)]
-struct ClosePullRequest;
-#[derive(Clone, Copy)]
-struct RequestReview;
-#[derive(Clone, Copy)]
-struct MergePullRequest;
-
-// Explicit action declarations make every policy permission visible without
-// asking the reader to expand a macro mentally.
-impl Action for ViewOrganization {
-    fn action_id(&self) -> ActionId {
-        ActionId::new("organization.view")
-    }
+define_authorization! {
+    target Organization = "organization" {
+        action ViewOrganization = "organization.view";
+        action ManageOrganizationMembers = "organization.manage_members";
+    };
+    target Repository = "repository" {
+        action Push = "repository.push";
+        action ConfigureRepository = "repository.configure";
+        action ManageCollaborators = "repository.manage_collaborators";
+        action MergePullRequest = "pull_request.merge";
+    };
+    target Environment = "environment" {
+        action DeployEnvironment = "environment.deploy";
+    };
+    target PullRequest = "pull_request" {
+        action EditPullRequest = "pull_request.edit";
+        action ClosePullRequest = "pull_request.close";
+        action RequestReview = "pull_request.request_review";
+    };
 }
-
-impl Action for ManageOrganizationMembers {
-    fn action_id(&self) -> ActionId {
-        ActionId::new("organization.manage_members")
-    }
-}
-
-impl Action for Push {
-    fn action_id(&self) -> ActionId {
-        ActionId::new("repository.push")
-    }
-}
-
-impl Action for ConfigureRepository {
-    fn action_id(&self) -> ActionId {
-        ActionId::new("repository.configure")
-    }
-}
-
-impl Action for ManageCollaborators {
-    fn action_id(&self) -> ActionId {
-        ActionId::new("repository.manage_collaborators")
-    }
-}
-
-impl Action for DeployEnvironment {
-    fn action_id(&self) -> ActionId {
-        ActionId::new("environment.deploy")
-    }
-}
-
-impl Action for EditPullRequest {
-    fn action_id(&self) -> ActionId {
-        ActionId::new("pull_request.edit")
-    }
-}
-
-impl Action for ClosePullRequest {
-    fn action_id(&self) -> ActionId {
-        ActionId::new("pull_request.close")
-    }
-}
-
-impl Action for RequestReview {
-    fn action_id(&self) -> ActionId {
-        ActionId::new("pull_request.request_review")
-    }
-}
-
-impl Action for MergePullRequest {
-    fn action_id(&self) -> ActionId {
-        ActionId::new("pull_request.merge")
-    }
-}
-
-struct Organization;
-struct Repository;
-struct Environment;
-struct PullRequest;
-
-impl Scope for Organization {
-    const KIND: &'static str = "organization";
-}
-impl Scope for Repository {
-    const KIND: &'static str = "repository";
-}
-impl Scope for Environment {
-    const KIND: &'static str = "environment";
-}
-impl Scope for PullRequest {
-    const KIND: &'static str = "pull_request";
-}
-
-impl ScopedBy<Organization> for ViewOrganization {}
-impl ScopedBy<Organization> for ManageOrganizationMembers {}
-impl ScopedBy<Repository> for Push {}
-impl ScopedBy<Repository> for ConfigureRepository {}
-impl ScopedBy<Repository> for ManageCollaborators {}
-impl ScopedBy<Repository> for MergePullRequest {}
-impl ScopedBy<Environment> for DeployEnvironment {}
-impl ScopedBy<PullRequest> for EditPullRequest {}
-impl ScopedBy<PullRequest> for ClosePullRequest {}
-impl ScopedBy<PullRequest> for RequestReview {}
 
 struct OrganizationRecord {
     slug: &'static str,
@@ -183,32 +90,29 @@ fn backend_member_access(
 ) -> Access {
     assert_eq!(team.organization.slug, repository.organization.slug);
     Access::new([
-        RoleAssignment::new(
+        RoleAssignment::for_target(
             "organization_member",
-            TargetKey::new("organization", team.organization.slug),
+            Organization::ident(team.organization.slug),
         ),
-        RoleAssignment::new(
+        RoleAssignment::for_target(
             "repository_writer",
-            TargetKey::new("repository", repository.scope_id()),
+            Repository::ident(repository.scope_id()),
         ),
-        RoleAssignment::new(
-            "staging_deployer",
-            TargetKey::new("environment", staging.scope_id()),
-        ),
+        RoleAssignment::for_target("staging_deployer", Environment::ident(staging.scope_id())),
     ])
 }
 
 /// The caller has loaded the PR and checked its author before granting an
 /// author-only role at the PR's exact scope.
 fn contributor_access(author: &str, pull_request: &PullRequestRecord<'_>) -> Access {
-    let mut access = Access::new([RoleAssignment::new(
+    let mut access = Access::with_role(
         "repository_contributor",
-        TargetKey::new("repository", pull_request.repository.scope_id()),
-    )]);
+        Repository::ident(pull_request.repository.scope_id()),
+    );
     if author == pull_request.author {
-        access.push(RoleAssignment::new(
+        access.push(RoleAssignment::for_target(
             "pull_request_author",
-            TargetKey::new("pull_request", pull_request.scope_id()),
+            PullRequest::ident(pull_request.scope_id()),
         ));
     }
     access
@@ -278,10 +182,10 @@ fn main() -> Result<(), rust_but_verify::ModelError> {
     println!("{} is a member of the {} team", alice.name, backend.slug);
     let bob = User {
         name: "Bob",
-        access: Access::new([RoleAssignment::new(
+        access: Access::with_role(
             "repository_admin",
-            TargetKey::new("repository", payments_api.scope_id()),
-        )]),
+            Repository::ident(payments_api.scope_id()),
+        ),
     };
     let carol = User {
         name: "Carol",
@@ -289,17 +193,17 @@ fn main() -> Result<(), rust_but_verify::ModelError> {
     };
     let dana = User {
         name: "Dana",
-        access: Access::new([RoleAssignment::new(
+        access: Access::with_role(
             "repository_maintainer",
-            TargetKey::new("repository", payments_api.scope_id()),
-        )]),
+            Repository::ident(payments_api.scope_id()),
+        ),
     };
     let deploy_production = ServiceAccount {
         name: "deploy-production",
-        access: Access::new([RoleAssignment::new(
+        access: Access::with_role(
             "production_deployer",
-            TargetKey::new("environment", production.scope_id()),
-        )]),
+            Environment::ident(production.scope_id()),
+        ),
     };
 
     let alice_pushes = authz
