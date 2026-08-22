@@ -11,8 +11,9 @@ for the Criterion timing suite plus the allocation and concurrency executables.
   focused bool-versus-`Decision`, locked two-target/`Targets` cases, and the
   Knowledge Base workload. The follow-up run filters to those focused groups;
   it does not rerun the exhaustive matrix.
-- `allocation_counts` uses `stats_alloc` for the Access-1 allow and deny
-  comparisons between `can`/`decide` and `can_runtime`/`decide_runtime`.
+- `allocation_counts` preserves the established allocation scenarios and adds
+  Access-1 allow and deny comparisons between `can`/`decide` and
+  `can_runtime`/`decide_runtime`.
 - `can_any_consistency` alternates policies with 1, 4, and 8 readers plus a
   writer, reporting calls, allows, impossible denies, and duration.
 - `concurrency` remains the pre-existing fixed-work throughput harness; it is

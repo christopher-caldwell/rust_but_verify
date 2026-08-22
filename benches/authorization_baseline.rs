@@ -520,6 +520,14 @@ fn bench_decision_cost(criterion: &mut Criterion) {
 fn run_can_any(authz: &Authorizer, access: &Access, candidates: usize) -> bool {
     match candidates {
         2 => authz.can_any(access, EditArticle, (Article::ident(991), Wiki::ident(42))),
+        3 => authz.can_any(
+            access,
+            EditArticle,
+            Targets::<EditArticle>::new()
+                .add(Article::ident(991))
+                .add(Wiki::ident(42))
+                .add(Section::ident(8)),
+        ),
         4 => authz.can_any(
             access,
             EditArticle,
@@ -564,6 +572,45 @@ fn can_any_access(size: usize, allowing_index: Option<usize>) -> Access {
     Access::new(assignments)
 }
 fn bench_can_any(criterion: &mut Criterion) {
+    let authz = authorizer();
+    let mut group = criterion.benchmark_group("can_any_matrix");
+    for size in [0, 1, 5, 10, 25, 100, 1_000] {
+        for candidates in [2, 3, 4] {
+            let positions: Vec<(&str, Option<usize>)> = match candidates {
+                2 => vec![
+                    ("first_allow", Some(0)),
+                    ("last_allow", Some(1)),
+                    ("all_deny", None),
+                ],
+                3 => vec![
+                    ("first_allow", Some(0)),
+                    ("middle_allow", Some(1)),
+                    ("last_allow", Some(2)),
+                    ("all_deny", None),
+                ],
+                _ => vec![
+                    ("first_allow", Some(0)),
+                    ("middle_allow", Some(1)),
+                    ("last_allow", Some(3)),
+                    ("all_deny", None),
+                ],
+            };
+            for (position, allowing_index) in positions {
+                let access = can_any_access(size, allowing_index);
+                group.bench_with_input(
+                    BenchmarkId::new(format!("{candidates}_targets_{position}"), size),
+                    &access,
+                    |b, access| {
+                        b.iter(|| black_box(run_can_any(&authz, black_box(access), candidates)))
+                    },
+                );
+            }
+        }
+    }
+    group.finish();
+}
+
+fn bench_locked_multi_target(criterion: &mut Criterion) {
     let authz = authorizer();
     let mut group = criterion.benchmark_group("locked_multi_target");
     for (label, candidates, allowing_index) in [
@@ -615,7 +662,7 @@ fn bench_can_any_overhead(criterion: &mut Criterion) {
                 ))
             })
         });
-        for n in [2, 4] {
+        for n in [2, 3, 4] {
             group.bench_with_input(
                 BenchmarkId::new(format!("can_any_{n}_deny"), size),
                 &deny,
@@ -933,6 +980,7 @@ criterion_group!(
     bench_access_build,
     bench_decision_cost,
     bench_can_any,
+    bench_locked_multi_target,
     bench_can_any_overhead,
     bench_policy,
     bench_identifier_sensitivity,
