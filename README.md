@@ -75,7 +75,11 @@ must establish that a schedule belongs to a child before choosing a child scope
 for an authorization check. RustButVerify does not inspect domain objects,
 traverse relationships, infer ownership, or provide a policy language.
 
-Runtime checks use exact `namespace::identifier` equality and default to deny.
+Runtime checks use exact `target_kind::ident` equality and default to deny.
+An action ID is one opaque consumer-owned string, such as `"article.edit"`.
+`Article::ident(1)` and `Wiki::ident(1)` remain distinct targets; idents may be
+numeric, slugs, UUIDs, or composite values. The application establishes all
+domain relationships before selecting a target to check.
 Unknown roles and actions do not grant access. An optional known-action set can
 reject misspelled runtime action keys while building a model.
 
@@ -86,7 +90,11 @@ Build and validate a complete candidate model before installing it. Calling
 `Authorizer::try_replace` builds a candidate and leaves the active model intact
 if validation fails.
 
-## Current v0 friction
+## Declarations
+
+Use `define_authorization!` for routine declarations, as Example 1 does. For
+an equivalent non-macro declaration, see Example 2: it implements `Scope`,
+`Action`, and `ScopedBy` directly. Both forms preserve the same typed checks.
 
 Action types, scope types, and `ScopedBy` implementations are deliberately
 explicit. Runtime policy loading also uses a small mutable builder loop. This is

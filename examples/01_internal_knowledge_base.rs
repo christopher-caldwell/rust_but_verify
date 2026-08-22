@@ -3,41 +3,15 @@
 //! Read this first. Every role assignment is made at the one shared knowledge
 //! base scope, so the only relationship to learn is `User -> Role -> Permission`.
 
-use rust_but_verify::{
-    Access, Action, ActionId, Authorizer, Model, RoleAssignment, Scope, ScopedBy, TargetKey,
-};
+use rust_but_verify::{Access, Authorizer, Model, Scope, define_authorization};
 
-#[derive(Clone, Copy)]
-struct ReadArticle;
-#[derive(Clone, Copy)]
-struct CreateArticle;
-#[derive(Clone, Copy)]
-struct EditArticle;
-#[derive(Clone, Copy)]
-struct DeleteArticle;
-
-impl Action for ReadArticle {
-    fn action_id(&self) -> ActionId {
-        ActionId::new("article.read")
-    }
-}
-
-impl Action for CreateArticle {
-    fn action_id(&self) -> ActionId {
-        ActionId::new("article.create")
-    }
-}
-
-impl Action for EditArticle {
-    fn action_id(&self) -> ActionId {
-        ActionId::new("article.edit")
-    }
-}
-
-impl Action for DeleteArticle {
-    fn action_id(&self) -> ActionId {
-        ActionId::new("article.delete")
-    }
+define_authorization! {
+    target KnowledgeBase = "knowledge_base" {
+        action ReadArticle = "article.read";
+        action CreateArticle = "article.create";
+        action EditArticle = "article.edit";
+        action DeleteArticle = "article.delete";
+    };
 }
 
 /// An article is a domain object. This small example has one internal knowledge
@@ -45,17 +19,6 @@ impl Action for DeleteArticle {
 struct Article {
     title: &'static str,
 }
-
-struct KnowledgeBase;
-
-impl Scope for KnowledgeBase {
-    const KIND: &'static str = "knowledge_base";
-}
-
-impl ScopedBy<KnowledgeBase> for ReadArticle {}
-impl ScopedBy<KnowledgeBase> for CreateArticle {}
-impl ScopedBy<KnowledgeBase> for EditArticle {}
-impl ScopedBy<KnowledgeBase> for DeleteArticle {}
 
 struct User {
     name: &'static str,
@@ -87,24 +50,15 @@ fn main() -> Result<(), rust_but_verify::ModelError> {
     // give role assignments distinct scope identifiers.
     let alice = User {
         name: "Alice",
-        access: Access::new([RoleAssignment::new(
-            "editor",
-            TargetKey::new("knowledge_base", "internal"),
-        )]),
+        access: Access::with_role("editor", KnowledgeBase::ident("internal")),
     };
     let bob = User {
         name: "Bob",
-        access: Access::new([RoleAssignment::new(
-            "viewer",
-            TargetKey::new("knowledge_base", "internal"),
-        )]),
+        access: Access::with_role("viewer", KnowledgeBase::ident("internal")),
     };
     let carol = User {
         name: "Carol",
-        access: Access::new([RoleAssignment::new(
-            "admin",
-            TargetKey::new("knowledge_base", "internal"),
-        )]),
+        access: Access::with_role("admin", KnowledgeBase::ident("internal")),
     };
     let handbook = Article {
         title: "engineering handbook",
