@@ -2,10 +2,10 @@
 
 RustButVerify is an exploratory Rust authorization library for one question:
 
-> Can any supplied role assignment perform this action within this exact scope?
+> Can any supplied role assignment perform this action on this exact target?
 
-Roles and grants are runtime data. Rust types make application call sites more
-discoverable and prevent checking an action against a scope type that the
+Roles and permissions are runtime data. Rust types make application call sites more
+discoverable and prevent checking an action against a target type that the
 application has not declared compatible.
 
 ```rust
@@ -51,18 +51,18 @@ assert!(authz
 # Ok::<(), rust_but_verify::PolicyError>(())
 ```
 
-Read the examples in order. Each one adds one layer to the previous model:
+Read the examples in order. Each one adds one layer to the previous policy:
 
 1. `examples/01_internal_knowledge_base.rs` — **Role**: a user receives a role
-   and the role grants article permissions. It uses macro declarations.
-2. `examples/02_community_server.rs` — **TargetType**: a user's role applies only in
+   and the role permits article actions. It uses macro declarations.
+2. `examples/02_community_server.rs` — **Target**: a user's role applies only in
    the named community.
 3. `examples/03_deployment_platform.rs` — **Relationships**: users and service
    accounts act on projects and environments after the application establishes
    their relationship.
 4. `examples/04_source_control_platform.rs` — **Composition**: team-derived
-   access, direct grants, parent resources, authorship, and restricted
-   sub-resources combine without granting more than intended.
+   access, direct permissions, parent resources, authorship, and restricted
+   sub-resources combine without allowing more than intended.
 5. `examples/05_internal_knowledge_base_without_macros.rs` — **Manual
    declarations**: functionally identical to Example 1, but intentionally
    written without `define_authorization!`.
@@ -70,27 +70,42 @@ Read the examples in order. Each one adds one layer to the previous model:
 See [`docs/example-api-friction.md`](docs/example-api-friction.md) for the API
 friction uncovered while writing these examples.
 
+## Policy and Access
+
+`Policy` is long-lived global role-to-action configuration: `wiki_editor`
+means the same thing wherever it is assigned. `Access` is an incomplete,
+caller-supplied collection of facts for one authorization context. Durable
+membership and request-derived facts—such as a caller-verified article owner—
+can be combined or changed without rebuilding Policy.
+
+Example 1 shows Alice editing through Wiki 42, Bob editing only Article 991
+after the application supplies an ownership fact, and Charlie denied. Wiki-wide
+authority does not require materializing an assignment for every article; an
+exact leaf assignment remains valid when the application has one.
+
 ## Boundary
 
 The consuming application owns identity, role-assignment loading, persistence,
 configuration loading, and domain relationships. For example, the application
-must establish that a schedule belongs to a child before choosing a child scope
+must establish that a schedule belongs to a child before choosing a child target
 for an authorization check. RustButVerify does not inspect domain objects,
 traverse relationships, infer ownership, or provide a policy language.
+It also provides no persistence adapters, wildcard matching, ABAC predicates,
+framework integration, or identity management.
 
 Runtime checks use exact `target_kind::ident` equality and default to deny.
 An action ID is one opaque consumer-owned string, such as `"article.edit"`.
 `Article::ident(1)` and `Wiki::ident(1)` remain distinct targets; idents may be
 numeric, slugs, UUIDs, or composite values. The application establishes all
 domain relationships before selecting a target to check.
-Unknown roles and actions do not grant access. An optional known-action set can
-reject misspelled runtime action keys while building a model.
+Unknown roles and actions do not allow access. An optional known-action set can
+reject misspelled runtime action keys while building a policy.
 
 ## Policy refresh
 
-Build and validate a complete candidate model before installing it. Calling
-`Authorizer::replace_policy` swaps an already-built model atomically;
-`Authorizer::try_replace` builds a candidate and leaves the active model intact
+Build and validate a complete candidate policy before installing it. Calling
+`Authorizer::replace_policy` swaps an already-built policy atomically;
+`Authorizer::try_replace` builds a candidate and leaves the active policy intact
 if validation fails.
 
 ## Declarations

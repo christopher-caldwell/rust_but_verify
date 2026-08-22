@@ -1,4 +1,4 @@
-//! Example 2: roles scoped to one community.
+//! Example 2: roles assigned to one community.
 //!
 //! The new idea is that a role does not answer only "what can this user do?"
 //! It answers "what can this user do in this particular community?"
@@ -46,7 +46,7 @@ fn main() -> Result<(), rust_but_verify::PolicyError> {
         .allow("admin", ConfigureCommunity);
     let authz = Authorizer::new(policy.build()?);
 
-    // The scope in each assignment is the community in which the role applies.
+    // The target in each assignment is the community in which the role applies.
     let alice = User {
         name: "Alice",
         access: Access::new([
