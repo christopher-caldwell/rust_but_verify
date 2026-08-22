@@ -1,6 +1,6 @@
 use rust_but_verify::{
-    Access, Action, ActionId, Authorizer, Decision, Model, RoleAssignment, Scope, ScopedBy,
-    TargetKey,
+    Access, Action, ActionId, ActionOn, Authorizer, Decision, Policy, RoleAssignment, TargetKey,
+    TargetType,
 };
 
 #[derive(Clone, Copy)]
@@ -14,34 +14,34 @@ impl Action for Edit {
 
 struct Child;
 
-impl Scope for Child {
+impl TargetType for Child {
     const KIND: &'static str = "child";
 }
 
-impl ScopedBy<Child> for Edit {}
+impl ActionOn<Child> for Edit {}
 
 struct Article;
 
-impl Scope for Article {
+impl TargetType for Article {
     const KIND: &'static str = "article";
 }
 
 struct Wiki;
 
-impl Scope for Wiki {
+impl TargetType for Wiki {
     const KIND: &'static str = "wiki";
 }
 
-impl ScopedBy<Article> for Edit {}
-impl ScopedBy<Wiki> for Edit {}
+impl ActionOn<Article> for Edit {}
+impl ActionOn<Wiki> for Edit {}
 
 #[test]
 fn consumer_can_authorize_with_typed_values() {
-    let mut builder = Model::builder();
-    builder.grant("parent", Edit);
+    let mut builder = Policy::builder();
+    builder.allow("parent", Edit);
     let model = builder.build().expect("model should be valid");
     let authorizer = Authorizer::new(model);
-    let assignment = RoleAssignment::new("parent", TargetKey::new("child", "123"));
+    let assignment = RoleAssignment::from_key("parent", TargetKey::new("child", "123"));
     let access = Access::new([assignment]);
 
     assert_eq!(
@@ -54,8 +54,8 @@ fn consumer_can_authorize_with_typed_values() {
 
 #[test]
 fn typed_access_keeps_target_kinds_distinct_for_equal_idents() {
-    let mut builder = Model::builder();
-    builder.grant("editor", Edit);
+    let mut builder = Policy::builder();
+    builder.allow("editor", Edit);
     let authorizer = Authorizer::new(builder.build().expect("model should be valid"));
 
     let article_access = Access::with_role("editor", Article::ident(1));

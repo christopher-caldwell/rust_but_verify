@@ -3,7 +3,7 @@
 //! Read this first. Every role assignment is made at the one shared knowledge
 //! base scope, so the only relationship to learn is `User -> Role -> Permission`.
 
-use rust_but_verify::{Access, Authorizer, Model, Scope, define_authorization};
+use rust_but_verify::{Access, Authorizer, Policy, TargetType, define_authorization};
 
 define_authorization! {
     target KnowledgeBase = "knowledge_base" {
@@ -29,21 +29,21 @@ fn report(label: &str, allowed: bool) {
     println!("{label}: {}", if allowed { "ALLOWED" } else { "DENIED" });
 }
 
-fn main() -> Result<(), rust_but_verify::ModelError> {
-    let mut policy = Model::builder();
+fn main() -> Result<(), rust_but_verify::PolicyError> {
+    let mut policy = Policy::builder();
 
     // A role grants permissions. The role names are runtime data, but typed
     // actions keep application call sites readable.
-    policy.grant("viewer", ReadArticle);
+    policy.allow("viewer", ReadArticle);
     policy
-        .grant("editor", ReadArticle)
-        .grant("editor", CreateArticle)
-        .grant("editor", EditArticle);
+        .allow("editor", ReadArticle)
+        .allow("editor", CreateArticle)
+        .allow("editor", EditArticle);
     policy
-        .grant("admin", ReadArticle)
-        .grant("admin", CreateArticle)
-        .grant("admin", EditArticle)
-        .grant("admin", DeleteArticle);
+        .allow("admin", ReadArticle)
+        .allow("admin", CreateArticle)
+        .allow("admin", EditArticle)
+        .allow("admin", DeleteArticle);
     let authz = Authorizer::new(policy.build()?);
 
     // Every role applies to this one shared knowledge base. Later examples
@@ -108,12 +108,20 @@ fn main() -> Result<(), rust_but_verify::ModelError> {
     // Requesting permission to a non registered resource also fails
     assert!(
         !authz
-            .can(&bob.access, EditArticle, KnowledgeBase::ident("not_registered"))
+            .can(
+                &bob.access,
+                EditArticle,
+                KnowledgeBase::ident("not_registered")
+            )
             .is_allowed()
     );
     assert!(
         !authz
-            .can(&alice.access, EditArticle, KnowledgeBase::ident("not_registered"))
+            .can(
+                &alice.access,
+                EditArticle,
+                KnowledgeBase::ident("not_registered")
+            )
             .is_allowed()
     );
 

@@ -105,7 +105,16 @@ pub struct RoleAssignment {
 }
 
 impl RoleAssignment {
-    pub fn new(role: impl Into<RoleId>, target: TargetKey) -> Self {
+    /// Records that `role` applies to this typed target.
+    pub fn new<T>(role: impl Into<RoleId>, target: crate::Target<T>) -> Self
+    where
+        T: crate::TargetType,
+    {
+        Self::from_key(role, target.into_target_key())
+    }
+
+    /// Creates an assignment from an erased runtime target key.
+    pub fn from_key(role: impl Into<RoleId>, target: TargetKey) -> Self {
         Self {
             role: role.into(),
             target,
@@ -130,7 +139,7 @@ mod tests {
         let role = RoleId::new("parent");
         let action = ActionId::new("scheduling.edit");
         let target = TargetKey::new("child", 123_u64);
-        let assignment = RoleAssignment::new(role.clone(), target.clone());
+        let assignment = RoleAssignment::from_key(role.clone(), target.clone());
 
         assert_eq!(role.as_str(), "parent");
         assert_eq!(action.as_str(), "scheduling.edit");

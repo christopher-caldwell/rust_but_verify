@@ -5,7 +5,7 @@
 //! ordinary Rust declarations that `define_authorization!` generates instead
 //! of using the macro.
 
-use rust_but_verify::{Access, Action, ActionId, Authorizer, Model, Scope, ScopedBy};
+use rust_but_verify::{Access, Action, ActionId, ActionOn, Authorizer, Policy, TargetType};
 
 #[derive(Clone, Copy)]
 struct ReadArticle;
@@ -42,14 +42,14 @@ impl Action for DeleteArticle {
 
 struct KnowledgeBase;
 
-impl Scope for KnowledgeBase {
+impl TargetType for KnowledgeBase {
     const KIND: &'static str = "knowledge_base";
 }
 
-impl ScopedBy<KnowledgeBase> for ReadArticle {}
-impl ScopedBy<KnowledgeBase> for CreateArticle {}
-impl ScopedBy<KnowledgeBase> for EditArticle {}
-impl ScopedBy<KnowledgeBase> for DeleteArticle {}
+impl ActionOn<KnowledgeBase> for ReadArticle {}
+impl ActionOn<KnowledgeBase> for CreateArticle {}
+impl ActionOn<KnowledgeBase> for EditArticle {}
+impl ActionOn<KnowledgeBase> for DeleteArticle {}
 
 /// An article is a domain object. This small example has one internal knowledge
 /// base, so article permissions are checked at that one shared scope.
@@ -66,21 +66,21 @@ fn report(label: &str, allowed: bool) {
     println!("{label}: {}", if allowed { "ALLOWED" } else { "DENIED" });
 }
 
-fn main() -> Result<(), rust_but_verify::ModelError> {
-    let mut policy = Model::builder();
+fn main() -> Result<(), rust_but_verify::PolicyError> {
+    let mut policy = Policy::builder();
 
     // A role grants permissions. The role names are runtime data, but typed
     // actions keep application call sites readable.
-    policy.grant("viewer", ReadArticle);
+    policy.allow("viewer", ReadArticle);
     policy
-        .grant("editor", ReadArticle)
-        .grant("editor", CreateArticle)
-        .grant("editor", EditArticle);
+        .allow("editor", ReadArticle)
+        .allow("editor", CreateArticle)
+        .allow("editor", EditArticle);
     policy
-        .grant("admin", ReadArticle)
-        .grant("admin", CreateArticle)
-        .grant("admin", EditArticle)
-        .grant("admin", DeleteArticle);
+        .allow("admin", ReadArticle)
+        .allow("admin", CreateArticle)
+        .allow("admin", EditArticle)
+        .allow("admin", DeleteArticle);
     let authz = Authorizer::new(policy.build()?);
 
     // Every role applies to this one shared knowledge base. Later examples

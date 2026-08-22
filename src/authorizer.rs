@@ -1,8 +1,8 @@
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{
-    ActionId, Model, ModelBuilder, ModelError, RoleAssignment, RoleId, Scope, ScopedBy, Target,
-    TargetKey,
+    ActionId, ActionOn, Policy, PolicyBuilder, PolicyError, RoleAssignment, RoleId, Target,
+    TargetKey, TargetType,
 };
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -24,17 +24,17 @@ impl Access {
     /// Creates access containing one role assignment at a typed target.
     pub fn with_role<S>(role: impl Into<RoleId>, target: Target<S>) -> Self
     where
-        S: Scope,
+        S: TargetType,
     {
-        Self::new([RoleAssignment::for_target(role, target)])
+        Self::new([RoleAssignment::new(role, target)])
     }
 
     /// Adds one role assignment at a typed target.
     pub fn add_role<S>(&mut self, role: impl Into<RoleId>, target: Target<S>) -> &mut Self
     where
-        S: Scope,
+        S: TargetType,
     {
-        self.push(RoleAssignment::for_target(role, target));
+        self.push(RoleAssignment::new(role, target));
         self
     }
 
@@ -53,6 +53,37 @@ impl FromIterator<RoleAssignment> for Access {
     }
 }
 
+#[cfg(test)]
+mod access_tests {
+    use crate::{RoleAssignment, TargetType};
+
+    use super::Access;
+
+    struct Document;
+
+    impl TargetType for Document {
+        const KIND: &'static str = "document";
+    }
+
+    #[test]
+    fn construction_patterns_preserve_supplied_facts() {
+        let empty = Access::empty();
+        let single = Access::with_role("reader", Document::ident(1));
+        let from_iterator: Access = [RoleAssignment::new("writer", Document::ident(2))]
+            .into_iter()
+            .collect();
+        let mut chained = Access::empty();
+        chained
+            .add_role("reader", Document::ident(3))
+            .add_role("writer", Document::ident(4));
+
+        assert!(empty.assignments().is_empty());
+        assert_eq!(single.assignments().len(), 1);
+        assert_eq!(from_iterator.assignments().len(), 1);
+        assert_eq!(chained.assignments().len(), 2);
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Decision {
     Allow { via_role: RoleId },
@@ -67,54 +98,56 @@ impl Decision {
 
 #[derive(Debug)]
 pub struct Authorizer {
-    model: RwLock<Model>,
+    policy: RwLock<Policy>,
 }
 
 impl Authorizer {
-    pub fn new(model: Model) -> Self {
+    pub fn new(policy: Policy) -> Self {
         Self {
-            model: RwLock::new(model),
+            policy: RwLock::new(policy),
         }
     }
 
     pub fn can<A, S>(&self, access: &Access, action: A, target: Target<S>) -> Decision
     where
-        A: ScopedBy<S>,
-        S: Scope,
+        A: ActionOn<S>,
+        S: TargetType,
     {
         self.can_runtime(access, &action.action_id(), target.target_key())
     }
 
     pub fn can_runtime(&self, access: &Access, action: &ActionId, target: &TargetKey) -> Decision {
-        let model = self.read_model();
+        let policy = self.read_policy();
 
         access
             .assignments()
             .iter()
             .find(|assignment| {
-                assignment.target() == target && model.role_grants(assignment.role(), action)
+                assignment.target() == target && policy.role_grants(assignment.role(), action)
             })
             .map_or(Decision::Deny, |assignment| Decision::Allow {
                 via_role: assignment.role().clone(),
             })
     }
 
-    pub fn replace_model(&self, model: Model) {
-        *self.write_model() = model;
+    pub fn replace_policy(&self, policy: Policy) {
+        *self.write_policy() = policy;
     }
 
-    pub fn try_replace(&self, candidate: ModelBuilder) -> Result<(), ModelError> {
-        let model = candidate.build()?;
-        self.replace_model(model);
+    pub fn try_replace(&self, candidate: PolicyBuilder) -> Result<(), PolicyError> {
+        let policy = candidate.build()?;
+        self.replace_policy(policy);
         Ok(())
     }
 
-    fn read_model(&self) -> RwLockReadGuard<'_, Model> {
-        self.model.read().unwrap_or_else(|error| error.into_inner())
+    fn read_policy(&self) -> RwLockReadGuard<'_, Policy> {
+        self.policy
+            .read()
+            .unwrap_or_else(|error| error.into_inner())
     }
 
-    fn write_model(&self) -> RwLockWriteGuard<'_, Model> {
-        self.model
+    fn write_policy(&self) -> RwLockWriteGuard<'_, Policy> {
+        self.policy
             .write()
             .unwrap_or_else(|error| error.into_inner())
     }
@@ -146,26 +179,26 @@ mod tests {
 
     struct Child;
 
-    impl Scope for Child {
+    impl TargetType for Child {
         const KIND: &'static str = "child";
     }
 
-    impl ScopedBy<Child> for Edit {}
-    impl ScopedBy<Child> for Delete {}
+    impl ActionOn<Child> for Edit {}
+    impl ActionOn<Child> for Delete {}
 
-    fn model_with(role: &str, action: impl Action) -> Model {
-        let mut builder = Model::builder();
-        builder.grant(role, action);
-        builder.build().expect("test model should be valid")
+    fn policy_with(role: &str, action: impl Action) -> Policy {
+        let mut builder = Policy::builder();
+        builder.allow(role, action);
+        builder.build().expect("test policy should be valid")
     }
 
     fn assigned(role: &str, child: &str) -> RoleAssignment {
-        RoleAssignment::new(role, TargetKey::new("child", child))
+        RoleAssignment::from_key(role, TargetKey::new("child", child))
     }
 
     #[test]
     fn matching_assignment_and_grant_allows() {
-        let authorizer = Authorizer::new(model_with("parent", Edit));
+        let authorizer = Authorizer::new(policy_with("parent", Edit));
         let access = Access::new([assigned("parent", "123")]);
 
         assert_eq!(
@@ -178,7 +211,7 @@ mod tests {
 
     #[test]
     fn missing_facts_default_to_deny() {
-        let authorizer = Authorizer::new(model_with("parent", Edit));
+        let authorizer = Authorizer::new(policy_with("parent", Edit));
         let matching = Access::new([assigned("parent", "123")]);
 
         assert_eq!(
@@ -213,7 +246,7 @@ mod tests {
 
     #[test]
     fn any_matching_assignment_can_allow() {
-        let authorizer = Authorizer::new(model_with("parent", Edit));
+        let authorizer = Authorizer::new(policy_with("parent", Edit));
         let access = Access::new([
             assigned("parent", "wrong-child"),
             assigned("youth", "123"),
@@ -229,7 +262,7 @@ mod tests {
 
     #[test]
     fn successful_replacement_changes_subsequent_decisions() {
-        let authorizer = Authorizer::new(model_with("parent", Edit));
+        let authorizer = Authorizer::new(policy_with("parent", Edit));
         let access = Access::new([assigned("parent", "123")]);
         assert!(
             authorizer
@@ -237,7 +270,7 @@ mod tests {
                 .is_allowed()
         );
 
-        authorizer.replace_model(model_with("youth", Edit));
+        authorizer.replace_policy(policy_with("youth", Edit));
 
         assert_eq!(
             authorizer.can(&access, Edit, Child::ident("123")),
@@ -246,18 +279,18 @@ mod tests {
     }
 
     #[test]
-    fn failed_candidate_leaves_active_model_usable() {
-        let authorizer = Authorizer::new(model_with("parent", Edit));
+    fn failed_candidate_leaves_active_policy_usable() {
+        let authorizer = Authorizer::new(policy_with("parent", Edit));
         let access = Access::new([assigned("parent", "123")]);
         let edit = ActionId::new("scheduling.edit");
-        let mut invalid = Model::builder();
+        let mut invalid = Policy::builder();
         invalid
             .validate_actions([edit])
-            .grant("parent", ActionId::new("scheduling.edti"));
+            .allow("parent", ActionId::new("scheduling.edti"));
 
         assert!(matches!(
             authorizer.try_replace(invalid),
-            Err(ModelError::UnknownAction { .. })
+            Err(PolicyError::UnknownAction { .. })
         ));
         assert!(
             authorizer

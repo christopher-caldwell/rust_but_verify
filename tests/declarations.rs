@@ -1,5 +1,6 @@
 use rust_but_verify::{
-    Access, Action, ActionId, Authorizer, Model, Scope, ScopedBy, Target, define_authorization,
+    Access, Action, ActionId, ActionOn, Authorizer, Policy, Target, TargetType,
+    define_authorization,
 };
 
 define_authorization! {
@@ -16,8 +17,8 @@ define_authorization! {
 
 fn accepts_pair<A, S>(_action: A, _target: Target<S>)
 where
-    A: ScopedBy<S>,
-    S: Scope,
+    A: ActionOn<S>,
+    S: TargetType,
 {
 }
 
@@ -27,10 +28,10 @@ fn macro_declares_default_and_multiple_target_actions() {
     accepts_pair(EditArticle, Article::ident(1));
     accepts_pair(EditArticle, Wiki::ident(1));
 
-    let mut policy = Model::builder();
+    let mut policy = Policy::builder();
     policy
-        .grant("editor", ReadArticle)
-        .grant("editor", EditArticle);
+        .allow("editor", ReadArticle)
+        .allow("editor", EditArticle);
     let authorizer = Authorizer::new(policy.build().expect("policy should be valid"));
 
     assert!(
@@ -50,7 +51,7 @@ mod ordinary_rust {
 
     pub struct Document;
 
-    impl Scope for Document {
+    impl TargetType for Document {
         const KIND: &'static str = "document";
     }
 
@@ -63,7 +64,7 @@ mod ordinary_rust {
         }
     }
 
-    impl ScopedBy<Document> for PublishDocument {}
+    impl ActionOn<Document> for PublishDocument {}
 }
 
 #[test]

@@ -3,7 +3,9 @@
 //! The new idea is that a role does not answer only "what can this user do?"
 //! It answers "what can this user do in this particular community?"
 
-use rust_but_verify::{Access, Authorizer, Model, RoleAssignment, Scope, define_authorization};
+use rust_but_verify::{
+    Access, Authorizer, Policy, RoleAssignment, TargetType, define_authorization,
+};
 
 define_authorization! {
     target Community = "community" {
@@ -28,28 +30,28 @@ fn report(user: &User, operation: &str, community: &str, allowed: bool) {
     );
 }
 
-fn main() -> Result<(), rust_but_verify::ModelError> {
-    let mut policy = Model::builder();
+fn main() -> Result<(), rust_but_verify::PolicyError> {
+    let mut policy = Policy::builder();
     policy
-        .grant("member", ViewCommunity)
-        .grant("member", CreateMessage)
-        .grant("moderator", ViewCommunity)
-        .grant("moderator", CreateMessage)
-        .grant("moderator", DeleteMessage)
-        .grant("moderator", ModerateMember)
-        .grant("admin", ViewCommunity)
-        .grant("admin", CreateMessage)
-        .grant("admin", DeleteMessage)
-        .grant("admin", ModerateMember)
-        .grant("admin", ConfigureCommunity);
+        .allow("member", ViewCommunity)
+        .allow("member", CreateMessage)
+        .allow("moderator", ViewCommunity)
+        .allow("moderator", CreateMessage)
+        .allow("moderator", DeleteMessage)
+        .allow("moderator", ModerateMember)
+        .allow("admin", ViewCommunity)
+        .allow("admin", CreateMessage)
+        .allow("admin", DeleteMessage)
+        .allow("admin", ModerateMember)
+        .allow("admin", ConfigureCommunity);
     let authz = Authorizer::new(policy.build()?);
 
     // The scope in each assignment is the community in which the role applies.
     let alice = User {
         name: "Alice",
         access: Access::new([
-            RoleAssignment::for_target("moderator", Community::ident("rust-developers")),
-            RoleAssignment::for_target("member", Community::ident("game-night")),
+            RoleAssignment::new("moderator", Community::ident("rust-developers")),
+            RoleAssignment::new("member", Community::ident("game-night")),
         ]),
     };
     let bob = User {
