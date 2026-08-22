@@ -1,129 +1,77 @@
-//! Example 1: roles for an internal knowledge base.
+//! Example 1: a knowledge base with Wiki-wide and Article-specific access.
 //!
-//! Read this first. Every role assignment is made at the one shared knowledge
-//! base scope, so the only relationship to learn is `User -> Role -> Permission`.
+//! The application supplies the relevant facts for this request. RustButVerify
+//! does not load articles, verify ownership, or discover an article's Wiki.
 
 use rust_but_verify::{Access, Authorizer, Policy, TargetType, define_authorization};
 
 define_authorization! {
-    target KnowledgeBase = "knowledge_base" {
-        action ReadArticle = "article.read";
-        action CreateArticle = "article.create";
-        action EditArticle = "article.edit";
-        action DeleteArticle = "article.delete";
-    };
+    target Article = "article";
+    target Wiki = "wiki";
+    action EditArticle = "article.edit" for [Article, Wiki];
 }
 
-/// An article is a domain object. This small example has one internal knowledge
-/// base, so article permissions are checked at that one shared scope.
-struct Article {
-    title: &'static str,
-}
-
-struct User {
-    name: &'static str,
-    access: Access,
-}
-
-fn report(label: &str, allowed: bool) {
-    println!("{label}: {}", if allowed { "ALLOWED" } else { "DENIED" });
+struct ArticleRecord {
+    id: u64,
+    wiki_id: u64,
 }
 
 fn main() -> Result<(), rust_but_verify::PolicyError> {
+    // Policy is long-lived, global role-to-action configuration. A role has
+    // the same meaning wherever applications assign it.
     let mut policy = Policy::builder();
-
-    // A role grants permissions. The role names are runtime data, but typed
-    // actions keep application call sites readable.
-    policy.allow("viewer", ReadArticle);
     policy
-        .allow("editor", ReadArticle)
-        .allow("editor", CreateArticle)
-        .allow("editor", EditArticle);
-    policy
-        .allow("admin", ReadArticle)
-        .allow("admin", CreateArticle)
-        .allow("admin", EditArticle)
-        .allow("admin", DeleteArticle);
+        .allow("wiki_editor", EditArticle)
+        .allow("article_owner", EditArticle);
     let authz = Authorizer::new(policy.build()?);
-
-    // Every role applies to this one shared knowledge base. Later examples
-    // give role assignments distinct scope identifiers.
-    let alice = User {
-        name: "Alice",
-        access: Access::with_role("editor", KnowledgeBase::ident("internal")),
-    };
-    let bob = User {
-        name: "Bob",
-        access: Access::with_role("viewer", KnowledgeBase::ident("internal")),
-    };
-    let carol = User {
-        name: "Carol",
-        access: Access::with_role("admin", KnowledgeBase::ident("internal")),
-    };
-    let handbook = Article {
-        title: "engineering handbook",
+    let article = ArticleRecord {
+        id: 991,
+        wiki_id: 42,
     };
 
-    // The matching role grant and shared knowledge-base assignment allow it.
-    report(
-        &format!("{} edits the {}", alice.name, handbook.title),
-        authz
-            .can(&alice.access, EditArticle, KnowledgeBase::ident("internal"))
-            .is_allowed(),
-    );
-    report(
-        &format!("{} reads the {}", bob.name, handbook.title),
-        authz
-            .can(&bob.access, ReadArticle, KnowledgeBase::ident("internal"))
-            .is_allowed(),
-    );
-    report(
-        &format!("{} edits the {}", bob.name, handbook.title),
-        authz
-            .can(&bob.access, EditArticle, KnowledgeBase::ident("internal"))
-            .is_allowed(),
-    );
-    report(
-        &format!("{} deletes the {}", carol.name, handbook.title),
-        authz
-            .can(
-                &carol.access,
-                DeleteArticle,
-                KnowledgeBase::ident("internal"),
-            )
-            .is_allowed(),
-    );
+    // A durable Wiki assignment covers every article in Wiki 42. No leaf
+    // assignments are materialized.
+    let alice = Access::with_role("wiki_editor", Wiki::ident(42));
 
-    // A viewer receives no edit permission even at the matching scope.
+    // The application loaded the request's article and verified Bob's owner
+    // relation; it supplies the resulting leaf-level fact.
+    let mut bob = Access::empty();
+    if true {
+        bob.add_role("article_owner", Article::ident(article.id));
+    }
+    let charlie = Access::empty();
+
     assert!(
         authz
-            .can(&alice.access, EditArticle, KnowledgeBase::ident("internal"))
-            .is_allowed()
-    );
-    assert!(
-        !authz
-            .can(&bob.access, EditArticle, KnowledgeBase::ident("internal"))
-            .is_allowed()
-    );
-    // Requesting permission to a non registered resource also fails
-    assert!(
-        !authz
-            .can(
-                &bob.access,
+            .can_any(
+                &alice,
                 EditArticle,
-                KnowledgeBase::ident("not_registered")
+                (Article::ident(article.id), Wiki::ident(article.wiki_id))
+            )
+            .is_allowed()
+    );
+    assert!(
+        authz
+            .can_any(
+                &bob,
+                EditArticle,
+                (Article::ident(article.id), Wiki::ident(article.wiki_id))
             )
             .is_allowed()
     );
     assert!(
         !authz
-            .can(
-                &alice.access,
+            .can_any(
+                &charlie,
                 EditArticle,
-                KnowledgeBase::ident("not_registered")
+                (Article::ident(article.id), Wiki::ident(article.wiki_id))
             )
             .is_allowed()
     );
-
+    assert!(
+        !authz
+            .can(&bob, EditArticle, Article::ident(992))
+            .is_allowed()
+    );
     Ok(())
 }
