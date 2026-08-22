@@ -34,15 +34,11 @@ fn macro_declares_default_and_multiple_target_actions() {
         .allow("editor", EditArticle);
     let authorizer = Authorizer::new(policy.build().expect("policy should be valid"));
 
-    assert!(
-        authorizer
-            .can(
-                &Access::with_role("editor", KnowledgeBase::ident("internal")),
-                ReadArticle,
-                KnowledgeBase::ident("internal"),
-            )
-            .is_allowed()
-    );
+    assert!(authorizer.can(
+        &Access::with_role("editor", KnowledgeBase::ident("internal")),
+        ReadArticle,
+        KnowledgeBase::ident("internal"),
+    ));
     assert_eq!(EditArticle.action_id(), ActionId::new("article.edit"));
 }
 

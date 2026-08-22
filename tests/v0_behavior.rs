@@ -59,22 +59,18 @@ fn minimum_v0_behavior_works_as_a_complete_consumer_flow() {
         assignment("parent", "child", "123"),
     ]);
 
-    assert!(authz.can(&access, Edit, Child::ident("123")).is_allowed());
-    assert!(
-        authz
-            .can(&access, Edit, Schedule::ident("456"))
-            .is_allowed()
-    );
+    assert!(authz.can(&access, Edit, Child::ident("123")));
+    assert!(authz.can(&access, Edit, Schedule::ident("456")));
     assert_eq!(
-        authz.can(&access, Delete, Child::ident("123")),
+        authz.decide(&access, Delete, Child::ident("123")),
         Decision::Deny
     );
     assert_eq!(
-        authz.can(&access, Edit, Child::ident("456")),
+        authz.decide(&access, Edit, Child::ident("456")),
         Decision::Deny
     );
     assert_eq!(
-        authz.can(
+        authz.decide(
             &Access::new([assignment("unknown", "child", "123")]),
             Edit,
             Child::ident("123")
@@ -87,11 +83,11 @@ fn minimum_v0_behavior_works_as_a_complete_consumer_flow() {
         .validate_actions([edit.clone()])
         .allow("parent", ActionId::new("scheduling.edti"));
     assert!(authz.try_replace(invalid).is_err());
-    assert!(authz.can(&access, Edit, Child::ident("123")).is_allowed());
+    assert!(authz.can(&access, Edit, Child::ident("123")));
 
     authz.replace_policy(policy(&[("youth", edit)]).unwrap());
     assert_eq!(
-        authz.can(&access, Edit, Child::ident("123")),
+        authz.decide(&access, Edit, Child::ident("123")),
         Decision::Deny
     );
 }

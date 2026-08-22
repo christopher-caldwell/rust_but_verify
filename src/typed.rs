@@ -20,6 +20,51 @@ pub struct Target<S> {
     target_type: PhantomData<fn() -> S>,
 }
 
+/// An ordered collection of typed targets for a single action type.
+///
+/// Targets are evaluated in insertion order by [`crate::Authorizer::can_any`]
+/// and [`crate::Authorizer::decide_any`]. It may be empty and has no semantic
+/// size limit.
+pub struct Targets<A> {
+    pub(crate) targets: Vec<TargetKey>,
+    action: PhantomData<fn() -> A>,
+}
+
+impl<A> Targets<A> {
+    pub fn new() -> Self {
+        Self {
+            targets: Vec::new(),
+            action: PhantomData,
+        }
+    }
+
+    /// Adds a target after checking that this collection's action may act on it.
+    ///
+    /// ```compile_fail
+    /// use rust_but_verify::{Action, ActionId, ActionOn, TargetType, Targets};
+    /// struct Edit; impl Action for Edit { fn action_id(&self) -> ActionId { ActionId::new("edit") } }
+    /// struct Article; impl TargetType for Article { const KIND: &'static str = "article"; }
+    /// struct Wiki; impl TargetType for Wiki { const KIND: &'static str = "wiki"; }
+    /// impl ActionOn<Article> for Edit {}
+    /// Targets::<Edit>::new().add(Wiki::ident(1));
+    /// ```
+    #[allow(clippy::should_implement_trait)]
+    pub fn add<S>(mut self, target: Target<S>) -> Self
+    where
+        A: ActionOn<S>,
+        S: TargetType,
+    {
+        self.targets.push(target.into_target_key());
+        self
+    }
+}
+
+impl<A> Default for Targets<A> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<S> Target<S>
 where
     S: TargetType,
