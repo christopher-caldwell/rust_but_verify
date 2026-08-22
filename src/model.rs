@@ -14,7 +14,7 @@ impl Policy {
         PolicyBuilder::new()
     }
 
-    pub fn role_grants(&self, role: &RoleId, action: &ActionId) -> bool {
+    pub(crate) fn allows(&self, role: &RoleId, action: &ActionId) -> bool {
         self.grants
             .get(role)
             .is_some_and(|actions| actions.contains(action))
@@ -127,8 +127,8 @@ mod tests {
 
         let policy = builder.build().expect("runtime policy should be valid");
 
-        assert!(policy.role_grants(&RoleId::new("parent"), &edit));
-        assert!(!policy.role_grants(&RoleId::new("youth"), &edit));
+        assert!(policy.allows(&RoleId::new("parent"), &edit));
+        assert!(!policy.allows(&RoleId::new("youth"), &edit));
     }
 
     #[test]
@@ -138,7 +138,7 @@ mod tests {
 
         let policy = builder.build().expect("typed allow should be valid");
 
-        assert!(policy.role_grants(&RoleId::new("parent"), &ActionId::new("scheduling.edit")));
+        assert!(policy.allows(&RoleId::new("parent"), &ActionId::new("scheduling.edit")));
     }
 
     #[test]
@@ -164,7 +164,7 @@ mod tests {
 
         let policy = builder.build().expect("catalog should be optional");
 
-        assert!(policy.role_grants(&RoleId::new("custom-role"), &custom));
+        assert!(policy.allows(&RoleId::new("custom-role"), &custom));
     }
 
     #[test]

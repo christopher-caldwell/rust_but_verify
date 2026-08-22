@@ -41,9 +41,7 @@ builder.allow("show_producer", Edit);
 let authz = Authorizer::new(builder.build()?);
 let access = Access::with_role("show_producer", Show::ident("midnight-signal"));
 
-assert!(authz
-    .can(&access, Edit, Show::ident("midnight-signal"))
-    .is_allowed());
+assert!(authz.can(&access, Edit, Show::ident("midnight-signal")));
 # Ok::<(), rust_but_verify::PolicyError>(())
 ```
 
