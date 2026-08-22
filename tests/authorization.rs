@@ -167,3 +167,44 @@ fn can_any_uses_candidate_order_then_access_order_for_metadata() {
         Decision::Deny
     );
 }
+
+#[test]
+fn ordinary_can_requires_the_exact_assigned_target() {
+    let mut builder = Policy::builder();
+    builder
+        .allow("wiki_editor", Edit)
+        .allow("article_owner", Edit);
+    let authorizer = Authorizer::new(builder.build().expect("policy should be valid"));
+
+    let alice = Access::with_role("wiki_editor", Wiki::ident(42));
+    let bob = Access::with_role("article_owner", Article::ident(991));
+
+    assert_eq!(
+        authorizer.can(&alice, Edit, Wiki::ident(42)),
+        Decision::Allow {
+            via_role: "wiki_editor".into(),
+            via_target: TargetKey::new("wiki", 42),
+        }
+    );
+    assert_eq!(
+        authorizer.can(&alice, Edit, Wiki::ident(43)),
+        Decision::Deny
+    );
+    assert_eq!(
+        authorizer.can(&alice, Edit, Article::ident(991)),
+        Decision::Deny
+    );
+
+    assert_eq!(
+        authorizer.can(&bob, Edit, Article::ident(991)),
+        Decision::Allow {
+            via_role: "article_owner".into(),
+            via_target: TargetKey::new("article", 991),
+        }
+    );
+    assert_eq!(
+        authorizer.can(&bob, Edit, Article::ident(992)),
+        Decision::Deny
+    );
+    assert_eq!(authorizer.can(&bob, Edit, Wiki::ident(42)), Decision::Deny);
+}
