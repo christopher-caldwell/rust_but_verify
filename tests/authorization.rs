@@ -48,13 +48,12 @@ fn policy(roles: &[&str]) -> Policy {
 fn typed_and_runtime_bool_paths_match_decisions() {
     let authz = Authorizer::new(policy(&["parent"]));
     let access = Access::new([RoleAssignment::new("parent", Child::ident("123"))]);
-    let cases = [
-        (Edit.action_id(), TargetKey::new("child", "123")),
-        (Delete.action_id(), TargetKey::new("child", "123")),
-        (Edit.action_id(), TargetKey::new("child", "456")),
-    ];
-
-    assert!(authz.can(&access, Edit, Child::ident("123")));
+    assert_eq!(
+        authz.can(&access, Edit, Child::ident("123")),
+        authz
+            .decide(&access, Edit, Child::ident("123"))
+            .is_allowed()
+    );
     assert_eq!(
         authz.decide(&access, Edit, Child::ident("123")),
         Decision::Allow {
@@ -62,15 +61,104 @@ fn typed_and_runtime_bool_paths_match_decisions() {
             via_target: TargetKey::new("child", "123"),
         }
     );
-    for (action, target) in cases {
+    assert_eq!(
+        authz.can(&access, Delete, Child::ident("123")),
+        authz
+            .decide(&access, Delete, Child::ident("123"))
+            .is_allowed()
+    );
+    assert_eq!(
+        authz.decide(&access, Delete, Child::ident("123")),
+        Decision::Deny
+    );
+    assert_eq!(
+        authz.can(&access, Edit, Child::ident("456")),
+        authz
+            .decide(&access, Edit, Child::ident("456"))
+            .is_allowed()
+    );
+    assert_eq!(
+        authz.decide(&access, Edit, Child::ident("456")),
+        Decision::Deny
+    );
+    let unknown = Access::with_role("unknown", Child::ident("123"));
+    assert_eq!(
+        authz.can(&unknown, Edit, Child::ident("123")),
+        authz
+            .decide(&unknown, Edit, Child::ident("123"))
+            .is_allowed()
+    );
+    assert_eq!(
+        authz.decide(&unknown, Edit, Child::ident("123")),
+        Decision::Deny
+    );
+    assert_eq!(
+        authz.can(&Access::empty(), Edit, Child::ident("123")),
+        authz
+            .decide(&Access::empty(), Edit, Child::ident("123"))
+            .is_allowed()
+    );
+    assert_eq!(
+        authz.decide(&Access::empty(), Edit, Child::ident("123")),
+        Decision::Deny
+    );
+
+    for (action, target, expected) in [
+        (Edit.action_id(), TargetKey::new("child", "123"), true),
+        (Delete.action_id(), TargetKey::new("child", "123"), false),
+        (Edit.action_id(), TargetKey::new("child", "456"), false),
+    ] {
+        assert_eq!(authz.can_runtime(&access, &action, &target), expected);
         assert_eq!(
             authz.can_runtime(&access, &action, &target),
             authz.decide_runtime(&access, &action, &target).is_allowed()
         );
     }
-    assert!(!authz.can(&Access::empty(), Edit, Child::ident("123")));
     assert_eq!(
-        authz.decide(&Access::empty(), Edit, Child::ident("123")),
+        authz.decide_runtime(&access, &Edit.action_id(), &TargetKey::new("child", "123")),
+        Decision::Allow {
+            via_role: "parent".into(),
+            via_target: TargetKey::new("child", "123")
+        }
+    );
+    assert_eq!(
+        authz.decide_runtime(
+            &access,
+            &Delete.action_id(),
+            &TargetKey::new("child", "123")
+        ),
+        Decision::Deny
+    );
+    assert_eq!(
+        authz.can_runtime(&unknown, &Edit.action_id(), &TargetKey::new("child", "123")),
+        authz
+            .decide_runtime(&unknown, &Edit.action_id(), &TargetKey::new("child", "123"))
+            .is_allowed()
+    );
+    assert_eq!(
+        authz.decide_runtime(&unknown, &Edit.action_id(), &TargetKey::new("child", "123")),
+        Decision::Deny
+    );
+    assert_eq!(
+        authz.can_runtime(
+            &Access::empty(),
+            &Edit.action_id(),
+            &TargetKey::new("child", "123")
+        ),
+        authz
+            .decide_runtime(
+                &Access::empty(),
+                &Edit.action_id(),
+                &TargetKey::new("child", "123")
+            )
+            .is_allowed()
+    );
+    assert_eq!(
+        authz.decide_runtime(
+            &Access::empty(),
+            &Edit.action_id(),
+            &TargetKey::new("child", "123")
+        ),
         Decision::Deny
     );
 }
@@ -83,7 +171,12 @@ fn multi_target_bool_and_provenance_follow_target_then_assignment_order() {
         RoleAssignment::new("article_second", Article::ident(991)),
         RoleAssignment::new("wiki", Wiki::ident(42)),
     ]);
-    assert!(authz.can_any(&access, Edit, (Article::ident(991), Wiki::ident(42))));
+    assert_eq!(
+        authz.can_any(&access, Edit, (Article::ident(991), Wiki::ident(42))),
+        authz
+            .decide_any(&access, Edit, (Article::ident(991), Wiki::ident(42)))
+            .is_allowed()
+    );
     assert_eq!(
         authz.decide_any(&access, Edit, (Article::ident(991), Wiki::ident(42))),
         Decision::Allow {
@@ -98,21 +191,61 @@ fn multi_target_bool_and_provenance_follow_target_then_assignment_order() {
             via_target: TargetKey::new("wiki", 42),
         }
     );
+    let second_only = Access::with_role("wiki", Wiki::ident(42));
+    assert_eq!(
+        authz.can_any(&second_only, Edit, (Article::ident(991), Wiki::ident(42))),
+        authz
+            .decide_any(&second_only, Edit, (Article::ident(991), Wiki::ident(42)))
+            .is_allowed()
+    );
+    assert_eq!(
+        authz.decide_any(&second_only, Edit, (Article::ident(991), Wiki::ident(42))),
+        Decision::Allow {
+            via_role: "wiki".into(),
+            via_target: TargetKey::new("wiki", 42)
+        }
+    );
+    let neither = Access::empty();
+    assert_eq!(
+        authz.can_any(&neither, Edit, (Article::ident(991), Wiki::ident(42))),
+        authz
+            .decide_any(&neither, Edit, (Article::ident(991), Wiki::ident(42)))
+            .is_allowed()
+    );
+    assert_eq!(
+        authz.decide_any(&neither, Edit, (Article::ident(991), Wiki::ident(42))),
+        Decision::Deny
+    );
 }
 
 #[test]
 fn targets_support_empty_single_and_arbitrary_counts_in_insertion_order() {
     let authz = Authorizer::new(policy(&["wiki"]));
     let access = Access::with_role("wiki", Wiki::ident(8));
-    let empty = Targets::<Edit>::new();
-    assert!(!authz.can_any(&access, Edit, empty));
+    assert_eq!(
+        authz.can_any(&access, Edit, Targets::<Edit>::new()),
+        authz
+            .decide_any(&access, Edit, Targets::<Edit>::new())
+            .is_allowed()
+    );
     assert_eq!(
         authz.decide_any(&access, Edit, Targets::<Edit>::new()),
         Decision::Deny
     );
 
-    let one = Targets::<Edit>::new().add(Wiki::ident(8));
-    assert!(authz.can_any(&access, Edit, one));
+    assert_eq!(
+        authz.can_any(&access, Edit, Targets::<Edit>::new().add(Wiki::ident(8))),
+        authz
+            .decide_any(&access, Edit, Targets::<Edit>::new().add(Wiki::ident(8)))
+            .is_allowed()
+    );
+    assert_eq!(
+        authz.decide_any(&access, Edit, Targets::<Edit>::new().add(Wiki::ident(8))),
+        Decision::Allow {
+            via_role: "wiki".into(),
+            via_target: TargetKey::new("wiki", 8)
+        }
+    );
     let many = Targets::<Edit>::new()
         .add(Article::ident(1))
         .add(Article::ident(2))
@@ -123,7 +256,35 @@ fn targets_support_empty_single_and_arbitrary_counts_in_insertion_order() {
         .add(Article::ident(7))
         .add(Wiki::ident(8));
     assert_eq!(
-        authz.decide_any(&access, Edit, many),
+        authz.can_any(
+            &access,
+            Edit,
+            Targets::<Edit>::new()
+                .add(Article::ident(1))
+                .add(Article::ident(2))
+                .add(Article::ident(3))
+                .add(Article::ident(4))
+                .add(Article::ident(5))
+                .add(Article::ident(6))
+                .add(Article::ident(7))
+                .add(Wiki::ident(8))
+        ),
+        authz.decide_any(&access, Edit, many).is_allowed()
+    );
+    assert_eq!(
+        authz.decide_any(
+            &access,
+            Edit,
+            Targets::<Edit>::new()
+                .add(Article::ident(1))
+                .add(Article::ident(2))
+                .add(Article::ident(3))
+                .add(Article::ident(4))
+                .add(Article::ident(5))
+                .add(Article::ident(6))
+                .add(Article::ident(7))
+                .add(Wiki::ident(8))
+        ),
         Decision::Allow {
             via_role: "wiki".into(),
             via_target: TargetKey::new("wiki", 8),

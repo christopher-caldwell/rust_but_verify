@@ -11,20 +11,24 @@ pub struct Access {
 }
 
 impl Access {
+    /// Creates access from role assignments in their supplied order.
     pub fn new(assignments: impl IntoIterator<Item = RoleAssignment>) -> Self {
         Self {
             assignments: assignments.into_iter().collect(),
         }
     }
+    /// Creates access with no role assignments.
     pub fn empty() -> Self {
         Self::default()
     }
+    /// Creates access containing one role assignment at a typed target.
     pub fn with_role<S>(role: impl Into<RoleId>, target: Target<S>) -> Self
     where
         S: TargetType,
     {
         Self::new([RoleAssignment::new(role, target)])
     }
+    /// Adds one role assignment at a typed target.
     pub fn add_role<S>(&mut self, role: impl Into<RoleId>, target: Target<S>) -> &mut Self
     where
         S: TargetType,
@@ -32,9 +36,11 @@ impl Access {
         self.push(RoleAssignment::new(role, target));
         self
     }
+    /// Appends a role assignment, preserving assignment evaluation order.
     pub fn push(&mut self, assignment: RoleAssignment) {
         self.assignments.push(assignment);
     }
+    /// Returns role assignments in their evaluation order.
     pub fn assignments(&self) -> &[RoleAssignment] {
         &self.assignments
     }
@@ -43,6 +49,36 @@ impl Access {
 impl FromIterator<RoleAssignment> for Access {
     fn from_iter<T: IntoIterator<Item = RoleAssignment>>(assignments: T) -> Self {
         Self::new(assignments)
+    }
+}
+
+#[cfg(test)]
+mod access_tests {
+    use crate::{RoleAssignment, TargetType};
+
+    use super::Access;
+
+    struct Document;
+    impl TargetType for Document {
+        const KIND: &'static str = "document";
+    }
+
+    #[test]
+    fn construction_patterns_preserve_supplied_facts() {
+        let empty = Access::empty();
+        let single = Access::with_role("reader", Document::ident(1));
+        let from_iterator: Access = [RoleAssignment::new("writer", Document::ident(2))]
+            .into_iter()
+            .collect();
+        let mut chained = Access::empty();
+        chained
+            .add_role("reader", Document::ident(3))
+            .add_role("writer", Document::ident(4));
+
+        assert!(empty.assignments().is_empty());
+        assert_eq!(single.assignments().len(), 1);
+        assert_eq!(from_iterator.assignments().len(), 1);
+        assert_eq!(chained.assignments().len(), 2);
     }
 }
 
