@@ -105,6 +105,17 @@ fn main() -> Result<(), rust_but_verify::ModelError> {
             .can(&bob.access, EditArticle, KnowledgeBase::ident("internal"))
             .is_allowed()
     );
+    // Requesting permission to a non registered resource also fails
+    assert!(
+        !authz
+            .can(&bob.access, EditArticle, KnowledgeBase::ident("not_registered"))
+            .is_allowed()
+    );
+    assert!(
+        !authz
+            .can(&alice.access, EditArticle, KnowledgeBase::ident("not_registered"))
+            .is_allowed()
+    );
 
     Ok(())
 }
