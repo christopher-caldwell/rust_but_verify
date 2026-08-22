@@ -4,7 +4,7 @@ RustButVerify is an exploratory Rust authorization library for one question:
 
 > Can any supplied role assignment perform this action on this exact target?
 
-Roles and grants are runtime data. Rust types make application call sites more
+Roles and permissions are runtime data. Rust types make application call sites more
 discoverable and prevent checking an action against a target type that the
 application has not declared compatible.
 
@@ -54,7 +54,7 @@ assert!(authz
 Read the examples in order. Each one adds one layer to the previous policy:
 
 1. `examples/01_internal_knowledge_base.rs` — **Role**: a user receives a role
-   and the role grants article permissions. It uses macro declarations.
+   and the role allows article permissions. It uses macro declarations.
 2. `examples/02_community_server.rs` — **Target**: a user's role applies only in
    the named community.
 3. `examples/03_deployment_platform.rs` — **Relationships**: users and service

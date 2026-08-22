@@ -82,7 +82,7 @@ struct ServiceAccount {
     access: Access,
 }
 
-/// The application resolves Backend team membership and the team's grants
+/// The application resolves Backend team membership and the team's permissions
 /// before giving Alice these effective role assignments. The library does not
 /// itself follow `User -> Team -> Repository` edges.
 fn backend_member_access(
@@ -105,7 +105,7 @@ fn backend_member_access(
 }
 
 /// The caller has loaded the PR and checked its author before granting an
-/// author-only role at the PR's exact scope.
+/// author-only role at the PR's exact target.
 fn contributor_access(author: &str, pull_request: &PullRequestRecord<'_>) -> Access {
     let mut access = Access::with_role(
         "repository_contributor",
@@ -121,7 +121,7 @@ fn contributor_access(author: &str, pull_request: &PullRequestRecord<'_>) -> Acc
 }
 
 /// A PR belongs to a repository, so maintainers merge by checking the parent
-/// repository scope. Establishing that parent relationship is application work.
+/// repository target. Establishing that parent relationship is application work.
 fn may_merge_pull_request(
     authz: &Authorizer,
     access: &Access,

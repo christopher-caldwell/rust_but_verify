@@ -1,9 +1,9 @@
 //! Example 3: a deployment platform with users, service accounts, and related resources.
 //!
-//! A project is the authorization scope for project-wide deployment creation.
-//! An environment has its own scope for the narrower act of deploying to it.
+//! A project is the authorization target for project-wide deployment creation.
+//! An environment has its own target for the narrower act of deploying to it.
 //! The application establishes the `Environment -> Project` relationship
-//! before selecting which scope to check.
+//! before selecting which target to check.
 
 use rust_but_verify::{
     Access, Authorizer, Policy, RoleAssignment, TargetType, define_authorization,

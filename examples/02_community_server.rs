@@ -46,7 +46,7 @@ fn main() -> Result<(), rust_but_verify::PolicyError> {
         .allow("admin", ConfigureCommunity);
     let authz = Authorizer::new(policy.build()?);
 
-    // The scope in each assignment is the community in which the role applies.
+    // The target in each assignment is the community in which the role applies.
     let alice = User {
         name: "Alice",
         access: Access::new([
