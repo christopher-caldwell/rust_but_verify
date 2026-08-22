@@ -29,15 +29,15 @@ mod scheduling {
     }
 }
 
-struct Child;
+struct Show;
 
-impl Scope for Child {
-    const NAMESPACE: &'static str = "child";
+impl Scope for Show {
+    const NAMESPACE: &'static str = "show";
 }
 
-impl ScopedBy<Child> for scheduling::Edit {}
+impl ScopedBy<Show> for scheduling::Edit {}
 
-let runtime_policy = [("parent", ActionKey::new("scheduling", "edit"))];
+let runtime_policy = [("show_producer", ActionKey::new("scheduling", "edit"))];
 let mut builder = Model::builder();
 for (role, action) in runtime_policy {
     builder.grant(role, action);
@@ -45,19 +45,31 @@ for (role, action) in runtime_policy {
 
 let authz = Authorizer::new(builder.build()?);
 let access = Access::new([RoleAssignment::new(
-    "parent",
-    ScopeKey::new("child", "123"),
+    "show_producer",
+    ScopeKey::new("show", "midnight-signal"),
 )]);
 
 assert!(authz
-    .can(&access, scheduling::EDIT, Child::ident("123"))
+    .can(&access, scheduling::EDIT, Show::ident("midnight-signal"))
     .is_allowed());
 # Ok::<(), rust_but_verify::ModelError>(())
 ```
 
-See `examples/family_schedule.rs` for runtime policy loading, multiple valid
-scope types and assignments, exact-scope denial, optional action validation,
-failed candidate retention, and successful model replacement.
+Read the examples in order. Each one adds one layer to the previous model:
+
+1. `examples/internal_knowledge_base.rs` — **Role**: a user receives a role
+   and the role grants article permissions.
+2. `examples/community_server.rs` — **Scope**: a user's role applies only in
+   the named community.
+3. `examples/deployment_platform.rs` — **Relationships**: users and service
+   accounts act on projects and environments after the application establishes
+   their relationship.
+4. `examples/source_control_platform.rs` — **Composition**: team-derived
+   access, direct grants, parent resources, authorship, and restricted
+   sub-resources combine without granting more than intended.
+
+See [`docs/example-api-friction.md`](docs/example-api-friction.md) for the API
+friction uncovered while writing these examples.
 
 ## Boundary
 

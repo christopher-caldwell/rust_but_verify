@@ -24,8 +24,10 @@ impl ScopedBy<Child> for Edit {}
 fn consumer_can_authorize_with_typed_values() {
     let mut builder = Model::builder();
     builder.grant("parent", Edit);
-    let authorizer = Authorizer::new(builder.build().expect("model should be valid"));
-    let access = Access::new([RoleAssignment::new("parent", ScopeKey::new("child", "123"))]);
+    let model = builder.build().expect("model should be valid");
+    let authorizer = Authorizer::new(model);
+    let assignment = RoleAssignment::new("parent", ScopeKey::new("child", "123"));
+    let access = Access::new([assignment]);
 
     assert_eq!(
         authorizer.can(&access, Edit, Child::ident("123")),
