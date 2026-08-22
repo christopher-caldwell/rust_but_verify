@@ -22,15 +22,20 @@ pub struct Target<S> {
 
 /// An ordered collection of typed targets for a single action type.
 ///
-/// Targets are evaluated in insertion order by [`crate::Authorizer::can_any`]
-/// and [`crate::Authorizer::decide_any`]. It may be empty and has no semantic
-/// size limit.
+/// Use this arbitrary-N form for zero, one, or more than two candidates; the
+/// two-target tuple accepted by [`crate::Authorizer::can_any`] is convenience
+/// syntax for a small “this OR that” check. Targets are evaluated in insertion
+/// order by [`crate::Authorizer::can_any`] and
+/// [`crate::Authorizer::decide_any`]. It may be empty, preserves duplicates,
+/// and has no semantic size limit. The caller establishes that candidates are
+/// relevant; this crate does not discover domain relationships.
 pub struct Targets<A> {
     pub(crate) targets: Vec<TargetKey>,
     action: PhantomData<fn() -> A>,
 }
 
 impl<A> Targets<A> {
+    /// Creates an empty arbitrary-N target collection for action type `A`.
     pub fn new() -> Self {
         Self {
             targets: Vec::new(),
@@ -38,7 +43,11 @@ impl<A> Targets<A> {
         }
     }
 
-    /// Adds a target after checking that this collection's action may act on it.
+    /// Adds a target after checking at compile time that this collection's
+    /// action may act on it.
+    ///
+    /// The target is appended without deduplication and is later evaluated in
+    /// insertion order.
     ///
     /// ```compile_fail
     /// use rust_but_verify::{Action, ActionId, ActionOn, TargetType, Targets};

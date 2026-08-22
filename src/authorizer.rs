@@ -83,15 +83,27 @@ mod access_tests {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Optional first-success provenance for an authorization check.
+///
+/// This is not an exhaustive explanation engine. When multiple paths could
+/// allow a check, [`Authorizer::decide`] and [`Authorizer::decide_any`] return
+/// only the first successful path in their documented evaluation order.
 pub enum Decision {
+    /// The role assignment and target that first allowed the action.
     Allow {
         via_role: RoleId,
         via_target: TargetKey,
     },
+    /// No supplied role assignment allowed the action on a candidate target.
     Deny,
 }
 
 impl Decision {
+    /// Returns whether this provenance result allowed the action.
+    ///
+    /// Prefer [`Authorizer::can`] or [`Authorizer::can_any`] when provenance is
+    /// not needed: those methods answer the usual authorization question
+    /// directly with `bool`.
     pub fn is_allowed(&self) -> bool {
         matches!(self, Self::Allow { .. })
     }
@@ -188,7 +200,11 @@ impl Authorizer {
         self.can_runtime(access, &action.action_id(), target.target_key())
     }
 
-    /// Returns the first matching role and target for one typed target.
+    /// Returns optional first-success provenance for one typed target.
+    ///
+    /// Prefer [`Self::can`] for an ordinary yes/no authorization decision.
+    /// This method reports the first matching access assignment, not every
+    /// possible reason an action could be allowed.
     pub fn decide<A, S>(&self, access: &Access, action: A, target: Target<S>) -> Decision
     where
         A: ActionOn<S>,
@@ -221,9 +237,13 @@ impl Authorizer {
             .is_some()
     }
 
-    /// Returns the first successful multi-target path. Tuple order or
-    /// [`Targets`] insertion order takes precedence over access assignment
-    /// order. This is provenance, not an exhaustive explanation.
+    /// Returns optional first-success provenance for a typed pair or
+    /// [`Targets`].
+    ///
+    /// One policy snapshot spans the complete multi-target operation. Tuple
+    /// order, or [`Targets`] insertion order, takes precedence over access
+    /// assignment order. This is provenance, not an exhaustive explanation;
+    /// use [`Self::can_any`] for an ordinary yes/no check.
     pub fn decide_any<A, T>(&self, access: &Access, action: A, targets: T) -> Decision
     where
         A: Action,
@@ -243,11 +263,18 @@ impl Authorizer {
             .unwrap_or(Decision::Deny)
     }
 
+    /// Answers whether an action is allowed on one runtime target key.
+    ///
+    /// The runtime form has the same matching semantics as [`Self::can`], but
+    /// accepts opaque action and target identifiers supplied by the caller.
     pub fn can_runtime(&self, access: &Access, action: &ActionId, target: &TargetKey) -> bool {
         let policy = self.read_policy();
         match_assignment(&policy, access, action, target).is_some()
     }
 
+    /// Returns optional first-success provenance for one runtime target key.
+    ///
+    /// Prefer [`Self::can_runtime`] when only the boolean answer is needed.
     pub fn decide_runtime(
         &self,
         access: &Access,

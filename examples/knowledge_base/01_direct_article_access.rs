@@ -16,12 +16,8 @@ fn main() -> Result<(), rust_but_verify::PolicyError> {
     // Bob has `article_editor` on Article 991, and nowhere else.
     let bob = Access::with_role("article_editor", Article::ident(991));
 
-    let edits_991 = authz
-        .can(&bob, EditArticle, Article::ident(991))
-        .is_allowed();
-    let edits_992 = authz
-        .can(&bob, EditArticle, Article::ident(992))
-        .is_allowed();
+    let edits_991 = authz.can(&bob, EditArticle, Article::ident(991));
+    let edits_992 = authz.can(&bob, EditArticle, Article::ident(992));
 
     println!("Bob edits Article 991: {edits_991}");
     println!("Bob edits Article 992: {edits_992}");

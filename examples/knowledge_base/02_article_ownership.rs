@@ -40,12 +40,8 @@ fn main() -> Result<(), rust_but_verify::PolicyError> {
     let bob_on_991 = ownership_access("Bob", &article_991);
     let bob_on_992 = ownership_access("Bob", &article_992);
 
-    let edits_991 = authz
-        .can(&bob_on_991, EditArticle, Article::ident(article_991.id))
-        .is_allowed();
-    let edits_992 = authz
-        .can(&bob_on_992, EditArticle, Article::ident(article_992.id))
-        .is_allowed();
+    let edits_991 = authz.can(&bob_on_991, EditArticle, Article::ident(article_991.id));
+    let edits_992 = authz.can(&bob_on_992, EditArticle, Article::ident(article_992.id));
 
     println!("Bob owns and edits Article 991: {edits_991}");
     println!("Bob edits Article 992, owned by Alice: {edits_992}");

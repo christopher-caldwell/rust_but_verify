@@ -17,13 +17,11 @@ struct ArticleRecord {
 /// The application already knows the article belongs to this Wiki. It supplies
 /// both exact targets; RustButVerify does not discover that relationship.
 fn may_edit_article(authz: &Authorizer, access: &Access, article: &ArticleRecord) -> bool {
-    authz
-        .can_any(
-            access,
-            EditArticle,
-            (Article::ident(article.id), Wiki::ident(article.wiki_id)),
-        )
-        .is_allowed()
+    authz.can_any(
+        access,
+        EditArticle,
+        (Article::ident(article.id), Wiki::ident(article.wiki_id)),
+    )
 }
 
 fn main() -> Result<(), rust_but_verify::PolicyError> {
