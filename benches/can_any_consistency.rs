@@ -43,10 +43,7 @@ fn run(readers: usize, duration: Duration) -> (u64, u64, Duration) {
         let denies = Arc::clone(&denies);
         workers.push(thread::spawn(move || {
             while !stop.load(Ordering::Relaxed) {
-                if authz
-                    .can_any(&access, Edit, (Article::ident(1), Wiki::ident(2)))
-                    .is_allowed()
-                {
+                if authz.can_any(&access, Edit, (Article::ident(1), Wiki::ident(2))) {
                     allows.fetch_add(1, Ordering::Relaxed);
                 } else {
                     denies.fetch_add(1, Ordering::Relaxed);

@@ -143,6 +143,22 @@ fn main() {
             std::hint::black_box(authz.can_runtime(access, &action, &target));
         });
     }
+    for (label, access) in [
+        ("typed_decide_allow_access_1", &allow_1),
+        ("typed_decide_deny_access_1", &deny_1),
+    ] {
+        report(label, || {
+            std::hint::black_box(authz.decide(access, EditArticle, Article::ident(991)));
+        });
+    }
+    for (label, access) in [
+        ("runtime_decide_allow_access_1", &allow_1),
+        ("runtime_decide_deny_access_1", &deny_1),
+    ] {
+        report(label, || {
+            std::hint::black_box(authz.decide_runtime(access, &action, &target));
+        });
+    }
     report("target_u64", || {
         std::hint::black_box(Article::ident(991_u64));
     });
