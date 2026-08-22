@@ -1,0 +1,9 @@
+default:
+    @just --list
+
+# Run one tutorial binary, for example: just example knowledge_base 01
+example domain step:
+    cargo run --bin "{{domain}}_{{step}}"
+
+check:
+    cargo check --bins

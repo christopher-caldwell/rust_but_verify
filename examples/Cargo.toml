@@ -1,0 +1,32 @@
+[package]
+name = "rust-but-verify-examples"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+rust-but-verify = { path = ".." }
+
+[[bin]]
+name = "knowledge_base_01"
+path = "knowledge_base/01_direct_article_access.rs"
+
+[[bin]]
+name = "knowledge_base_02"
+path = "knowledge_base/02_article_ownership.rs"
+
+[[bin]]
+name = "knowledge_base_03"
+path = "knowledge_base/03_wiki_access.rs"
+
+[[bin]]
+name = "knowledge_base_04"
+path = "knowledge_base/04_combined_access.rs"
+
+[[bin]]
+name = "without_macros_01"
+path = "without_macros/01_direct_article_access.rs"
+
+[[bin]]
+name = "without_macros_02"
+path = "without_macros/02_multiple_targets.rs"

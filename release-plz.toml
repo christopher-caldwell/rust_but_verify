@@ -1,0 +1,8 @@
+[workspace]
+changelog_update = true
+dependencies_update = false
+semver_check = true
+
+[changelog]
+protect_breaking_commits = true
+sort_commits = "oldest"

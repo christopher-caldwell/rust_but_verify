@@ -1,6 +1,45 @@
 [package]
 name = "rust-but-verify"
 version = "0.1.0"
+license = "MIT"
 edition = "2024"
+rust-version = "1.85"
+description = "A small, typed Rust authorization library for exact role assignments."
+repository = "https://github.com/christopher-caldwell/rust_but_verify"
+readme = "README.md"
+keywords = ["authorization", "rbac", "permissions", "access-control"]
+categories = ["authentication"]
+autoexamples = false
+exclude = [
+    ".codex/**",
+    ".github/**",
+    ".taskledger/**",
+    "examples/**",
+    "specs/**",
+    "release-plz.toml",
+    "Justfile",
+    "scripts/**",
+    "target/**",
+]
 
 [dependencies]
+
+[dev-dependencies]
+criterion = "0.5"
+stats_alloc = "0.1"
+
+[[bench]]
+name = "authorization_baseline"
+harness = false
+
+[[bench]]
+name = "allocation_counts"
+harness = false
+
+[[bench]]
+name = "concurrency"
+harness = false
+
+[[bench]]
+name = "can_any_consistency"
+harness = false

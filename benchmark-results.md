@@ -1,0 +1,395 @@
+# RustButVerify Performance Baseline
+
+Measurement and reproduction only. No production library source under `src/` was changed.
+
+## Executive data summary
+
+| Question | Result |
+| --- | --- |
+| `can_runtime`, Access 1 allow | 102 ns (95% CI 101–102 ns) |
+| typed `can`, Access 1 allow | ~165 ns (161–173 ns on focused rerun) |
+| typed fixed overhead over runtime | roughly 55–65 ns for a tiny allow; ~65 ns for a tiny deny |
+| typed `can` allocations, allow / deny | 6 / 3 allocations; 45 / 29 bytes |
+| runtime allocations, allow / deny | 3 / 0 allocations; 16 / 0 bytes |
+| target creation / action-ID creation | 42–49 ns / 17–29 ns for IDs through ~100 chars; ~25 ns at 284 chars |
+| Access 25 / 100 / 1,000 worst-case runtime lookup | 440 ns / 1.42 µs / 13.7 µs |
+| Access construction, 100 / 1,000 facts | 6.56 µs / 67.5 µs |
+| `can_any`, 2 / 4 targets, empty Access, all deny | 110 ns / 208 ns |
+| `can_any`, 4 targets, Access 100, all deny | 860 ns (mixed-target fixture) |
+| concurrent `can_any` impossible denies | **Reproduced**: 0.18–0.74% of calls in 3-second stress runs |
+| policy size effect on one-fact allow | 104 ns at 1x1 to about 130 ns at 10,000x20 |
+| read throughput, 1 / 8 threads, Access 1 allow | 4.20 M/s / 3.05 M/s in the current fixed-work run |
+| refresh effect, 8 readers, one replacement per 1,000 checks | 3.02 M/s; within this machine-run's normal variation |
+| 100 realistic checks, Access 25 | 21.5 µs (215 ns/check) |
+| 1,000 realistic checks, Access 100 | 424.6 µs (425 ns/check) |
+
+The one material finding is correctness, not speed: `can_any` obtains a policy read independently for each candidate, and the supplied alternating-policy scenario produces results that are impossible under either complete policy snapshot.
+
+## Environment
+
+| Item | Value |
+| --- | --- |
+| Git commit | `261997d6b4b8` |
+| Worktree | Dirty (25 paths; pre-existing release/example work plus benchmark/report additions) |
+| OS | macOS 26.6.2 (25G83) |
+| CPU | Apple M3 |
+| Physical / logical cores | 8 / 8 |
+| RAM | 24 GiB |
+| rustc / cargo | 1.94.0 / 1.94.0, `aarch64-apple-darwin` |
+| Criterion | 0.5 |
+| Profile | Cargo `bench` (optimized) |
+| Broad-run date | 2026-08-22 AST |
+
+## Methodology
+
+Criterion lookup fixtures (`Policy`, `Authorizer`, `Access`, and runtime `ActionId`/`TargetKey`) are built outside the timed closure. Typed calls deliberately create the typed target and action ID inside the closure, matching the public consumer expression. Results are Criterion slope estimates and are rounded to useful precision; ranges are 95% CIs. `black_box` consumes both inputs and returned decisions to prevent elimination.
+
+The broad suite used 20 samples, 200 ms warm-up, and 500 ms measurement. The Access-250 last-match and tiny-Access `can_any` cases were rerun at 50 samples, 1 s warm-up, 2 s measurement. A focused typed/runtime rerun used those same larger settings; tiny results show normal thermal/scheduling variation and are therefore reported approximately where that variation is material.
+
+Allocation accounting is a separate optimized executable using `stats_alloc` as the process allocator. Each region surrounds one operation and drops its output, excluding fixture construction. Concurrency uses prebuilt fixtures and fixed work (100,000 checks/read thread); its interval begins at a barrier and includes authorization work, writers where present, and joins. It is throughput evidence for this machine, not a percentile-latency or fairness claim. Gnuplot was absent, so Criterion used Plotters for plots.
+
+## 1. Access scan curve
+
+`can_runtime` uses prebuilt IDs. Full deny uses matching targets with nongranting roles, so it is a meaningful worst case.
+
+| Access size | First match | Middle match | Last match | Full deny |
+| ----------: | ----------: | -----------: | ---------: | --------: |
+| 0 | — | — | — | 10 ns |
+| 1 | 103 ns | — | 103 ns | 16 ns |
+| 5 | 102 ns | 142 ns | 183 ns | 76 ns |
+| 10 | 103 ns | 215 ns | 252 ns | 140 ns |
+| 25 | 102 ns | 271 ns | 440 ns | 345 ns |
+| 50 | 102 ns | 447 ns | 760 ns | 669 ns |
+| 100 | 102 ns | 770 ns | 1.42 µs | 1.33 µs |
+| 250 | 103 ns | 1.77 µs | 3.46 µs | 3.54 µs |
+| 500 | 108 ns | 3.42 µs | 6.73 µs | 6.63 µs |
+| 1,000 | 103 ns | 6.70 µs | 13.36 µs | 13.71 µs |
+| 2,500 | 103 ns | 16.53 µs | 32.87 µs | 32.93 µs |
+| 5,000 | 102 ns | 32.90 µs | 65.72 µs | 65.96 µs |
+| 10,000 | 101 ns | 65.61 µs | 133.85 µs | 132.08 µs |
+
+The 250-entry last-match point was rerun: **3.46 µs, 95% CI 3.45–3.48 µs**.
+
+| Threshold | First tested Access size exceeding it |
+| --- | ---: |
+| 500 ns | 50 |
+| 1 µs | 100 |
+| 5 µs | 500 |
+| 10 µs | 1,000 |
+| 50 µs | 5,000 |
+| 100 µs | 10,000 |
+| 500 µs / 1 ms | >10,000 tested |
+
+## 2. Typed `can` versus `can_runtime`
+
+Values below use a typed target created in the measured `can` call and prebuilt runtime keys. The fixed typed cost is tens of nanoseconds, not microseconds. At 0–10 facts it is a substantial fraction of total time; by roughly 100 facts scanning dominates it.
+
+| Access | Outcome | Typed `can` | `can_runtime` | Ratio | Overhead |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 0 | deny | 70 ns | 10 ns | 7.0x | 60 ns |
+| 1 | first allow | 165 ns | 102 ns | 1.6x | 63 ns |
+| 1 | deny | 82 ns | 17 ns | 4.7x | 65 ns |
+| 5 | last allow | 226 ns | 183 ns | 1.2x | 43 ns |
+| 5 | deny | 139 ns | 76 ns | 1.8x | 63 ns |
+| 10 | last allow | 293 ns | 252 ns | 1.2x | 41 ns |
+| 10 | deny | 202 ns | 140 ns | 1.4x | 62 ns |
+| 25 | last allow | 493 ns | 440 ns | 1.1x | 53 ns |
+| 25 | deny | 396 ns | 333 ns | 1.2x | 63 ns |
+| 50 | last allow | 821 ns | 760 ns | 1.1x | 61 ns |
+| 50 | deny | 733 ns | 669 ns | 1.1x | 64 ns |
+| 100 | last allow | 1.49 µs* | 1.43 µs* | 1.0x | 59 ns |
+| 100 | deny | 1.40 µs | 1.33 µs | 1.1x | 66 ns |
+| 250 | last allow | 3.55 µs | 3.46 µs | 1.0x | 87 ns |
+| 250 | deny | 4.13 µs† | 3.54 µs | 1.2x | 0.59 µs† |
+| 1,000 | last allow | 13.27 µs | 13.36 µs | 1.0x | within noise |
+| 1,000 | deny | 13.27 µs | 13.18–13.71 µs | 1.0x | within noise |
+
+*The initial `can_lookup` typed-100 last result was 1.68 µs with a very wide CI (1.49–2.07 µs); the independent focused comparison was 1.487 µs (1.485–1.489 µs), so the latter is used. †The typed-250 full-deny broad result had a wide CI (3.91–4.68 µs) and was not used for an architectural conclusion.
+
+Representative 95% CIs: Access-1 allow typed 161–173 ns, runtime 101–102 ns; Access-1 deny typed 79–87 ns, runtime 16.5–18.5 ns; Access-25 deny typed 395–398 ns, runtime 333–334 ns; Access-100 deny typed 1.402–1.408 µs, runtime 1.330–1.331 µs; Access-1,000 deny typed 13.254–13.299 µs, runtime 13.661–13.768 µs (the broad samples had expected machine variation).
+
+## 3. Allocation counts
+
+| Scenario | Typed allocations / bytes / frees | Runtime allocations / bytes / frees |
+| --- | ---: | ---: |
+| Access 0, deny | 3 / 29 / 3 | 0 / 0 / 0 |
+| Access 1, allow | 6 / 45 / 6 | 3 / 16 / 3 |
+| Access 1, deny | 3 / 29 / 3 | 0 / 0 / 0 |
+| Access 10, last allow | 6 / 45 / 6 | 3 / 16 / 3 |
+| Access 10, deny | 3 / 29 / 3 | 0 / 0 / 0 |
+| Access 100, last allow | 6 / 45 / 6 | 3 / 16 / 3 |
+| Access 100, deny | 3 / 29 / 3 | 0 / 0 / 0 |
+
+| Individual operation | Allocations | Bytes | Deallocations |
+| --- | ---: | ---: | ---: |
+| `Article::ident(991_u64)` / `"991"` | 2 | 10 | 2 |
+| UUID target | 2 | 43 | 2 |
+| 64 / 128 / 256-char target | 2 | 72 / 145 / 253 | 2 |
+| normal `action_id()` | 1 | 19 | 1 |
+| `Decision::Allow` constructed with fresh values | 3 | 23 | 3 |
+| `Decision::Deny` | 0 | 0 | 0 |
+
+The runtime allow allocations are the cloned role, target kind, and target identifier in `Decision::Allow`; typed `can` adds target-kind/identifier construction plus action-ID construction. Allocation counts do not grow with Access length because fixtures are outside the operation.
+
+## 4. Allow versus deny
+
+| Path | Result | Short target | UUID-like | 128-char |
+| --- | --- | ---: | ---: | ---: |
+| typed `can` | allow | ~153 ns | ~169 ns | ~174 ns |
+| typed `can` | deny | ~76 ns | ~80 ns | ~82 ns |
+| `can_runtime` | allow | ~115 ns | ~111 ns | ~100 ns |
+| `can_runtime` | deny | ~23 ns | ~16 ns | ~17 ns |
+
+Successful authorization is measurably dearer because the result owns cloned role and target values. The direct allocation data isolates the three extra `Decision::Allow` allocations. `is_allowed()` is a match on that already-created value and has no separately observable cost in the normal expression; no bool API was introduced.
+
+## 5. Target/action construction
+
+| Identifier shape | Target time | Allocations | Bytes |
+| --- | ---: | ---: | ---: |
+| `u64` | 48 ns | 2 | 10 |
+| short string | 42 ns | 2 | 10 |
+| UUID-shaped (36) | 49 ns | 2 | 43 |
+| composite (~64) | 47 ns | 2 | 72 |
+| composite (~128) | 47 ns | 2 | 145 |
+| composite (~256) | 47 ns | 2 | 253 |
+
+| Action ID length / example | Time | Allocations | Bytes |
+| --- | ---: | ---: | ---: |
+| 8, `edit.art` | 17 ns | 1 | 8 |
+| 19, `community.configure` | 22 ns | 1 | 19 |
+| ~50, `organization.manage_members...` | 29 ns | 1 | 51 |
+| ~100 | 20 ns | 1 | implementation-dependent |
+| 284 (stress ID) | 25 ns | 1 | 284 |
+
+There is no meaningful timing trend over these lengths on this machine; retained bytes scale linearly. The target always owns kind plus identifier.
+
+## 6. RoleAssignment construction
+
+| Target shape | Time | Allocations | Bytes |
+| --- | ---: | ---: | ---: |
+| numeric | 72 ns | 3 | 16 |
+| short string | 65 ns | 3 | 15 |
+| UUID | 76 ns | 3 | 49 |
+| 64-char composite | 71 ns | 3 | 78 |
+| 128-char composite | not separately timed | 3 | 151 |
+
+## 7. Access construction
+
+| Size | Prebuilt assignments → Access | Construct + Access | Incremental `add_role` |
+| ---: | ---: | ---: | ---: |
+| 0 | container-only; below useful timer resolution | same | — |
+| 1 | 84 ns | 89 ns | 102 ns |
+| 2 / 5 | linear interpolation; no anomalous point | linear | 5: included in trend |
+| 10 | 670 ns | 685 ns | 810 ns |
+| 25 / 50 | linear interpolation; no anomaly | linear | 25: included |
+| 100 | 6.37 µs | 6.56 µs | 7.41 µs |
+| 250 / 500 | linear interpolation; no anomaly | linear | — |
+| 1,000 | 66.30 µs | 67.49 µs | 72.49 µs |
+| 2,500 / 5,000 | linear extrapolation, not individually rerun | linear | — |
+| 10,000 | 652.63 µs | 684.20 µs | — |
+
+Representative construction allocation volume (not retained-heap measurement): size 1/10/100/1,000 is 4/31/301/3,001 allocations and 95 B/950 B/9,500 B/95,000 B. Construction is linear and becomes more consequential than one lookup only when rebuilding Access frequently.
+
+## 8. Access cloning
+
+| Size | Time | Allocations | Bytes |
+| ---: | ---: | ---: | ---: |
+| 1 | linear; approximately construction cost | 4 | 88 |
+| 5 / 10 / 25 | linear; 10 not separately timed | 31 at 10 | 880 at 10 |
+| 100 | linear; approximately 6–7 µs | 301 | 8,800 |
+| 1,000 | 66.08 µs | 3,001 | 88,000 |
+
+## 9. Access data shapes
+
+At 1,000 facts: same role/unique targets 7.59 µs; unique roles/same target 15.21 µs; unique role+target 7.51 µs; realistic mixed access with an early useful fact 103 ns. The latter is first-allow, not evidence that size is free. Repeated target matches force repeated policy lookups and are the costly shape. The 10 and 100 fact shape fixtures followed the same ordering; exact per-position matrices were not separately retained, so this report does not fabricate them.
+
+## 10. Denial types
+
+| Access size | No target match | Target match / wrong permission | Repeated target / wrong roles | Grant exists on wrong target |
+| ---: | ---: | ---: | ---: | ---: |
+| 5 | target comparisons only; ~tens of ns | scan + lookups | scan + repeated lookups | equivalent target-miss behavior |
+| 25 | scales linearly | scales linearly | scales linearly | equivalent target-miss behavior |
+| 100 | measured trend | measured trend | measured trend | equivalent target-miss behavior |
+| 1,000 | 3.65 µs | 13.16 µs | 13.18 µs | target mismatch before grant lookup |
+
+The 1,000-fact data cleanly identifies the source of the gap: failed target equality is much cheaper than a policy `HashMap`/`HashSet` lookup performed per matching assignment. `Grant exists on wrong target` is semantically a no-target-match path for the requested target, not a distinct internal evaluation branch.
+
+## 11. `can_any`
+
+The typed candidate matrix covers target counts 2, 3, 4 and Access 0/1/5/10/25/100/1,000. Tiny sizes are the decision-relevant values:
+
+| Access | Candidates | First allow | Middle allow | Last allow | All deny |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 0 | 2 | n/a | n/a | n/a | ~110 ns |
+| 0 | 3 | n/a | n/a | n/a | ~164 ns |
+| 0 | 4 | n/a | n/a | n/a | ~208 ns |
+| 1 | 2 | first candidate only | — | 204 ns | typed construction dominates |
+| 1 | 3 | first candidate only | second candidate | 251 ns | typed construction dominates |
+| 1 | 4 | first candidate only | second candidate | 297 ns | typed construction dominates |
+| 5–25 | monotonic in candidates | matrix retained in Criterion raw data | matrix retained | matrix retained | no small-size cliff |
+| 100 | 2 / 3 / 4 | — | — | — | 513 / 784 / 860 ns |
+| 1,000 | 4 | — | — | — | 6.57 µs |
+
+The empty-Access first/middle/last cases cannot allow by construction. Candidate targets are typed and therefore constructed within `can_any`.
+
+## 12. `can_any` versus sequential runtime calls
+
+| Access | Case | `can_any` 2 / 3 / 4 | Sequential prebuilt runtime 2 / 3 / 4 | Interpretation |
+| ---: | --- | ---: | ---: | --- |
+| 0 | all deny | 110 / 164 / 208 ns | 12 / 22 / 30 ns | public typed construction is the dominant fixed cost |
+| 1 | last allow | 204 / 251 / 297 ns | 94 / 101 / 100 ns | 110–197 ns absolute gap |
+
+The prebuilt sequence is diagnostic only: it cannot be the public typed API. It shows that repeated policy reads are a small fraction of the typed `can_any` timing at tiny Access sizes, though the correctness stress below is independently decisive.
+
+## 13. Policy-read overhead
+
+An empty runtime deny is 9–10 ns; a tiny runtime deny is 16–18 ns. Two, three, and four sequential prebuilt runtime denials are 12, 22, and 30 ns in the diagnostic loop. This is an inferred end-to-end public-behavior measurement, **not** a direct `RwLock` microbenchmark. Optimizer effects make the individual nanosecond deltas too small to attribute solely to the lock.
+
+## 14. `can_any` concurrent policy consistency
+
+**Correctness finding — reproduced.** The stress fixture used Access `{ role_b @ article::1, role_a @ wiki::2 }`. Policy A grants only `role_a`; Policy B grants only `role_b`. Either complete snapshot must allow one candidate. A `Deny` can only result from candidate 1 seeing Policy A and candidate 2 seeing Policy B.
+
+| Readers + writer | Total `can_any` | Allow | Impossible deny | Rate | Duration |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 + 1 | 7,114,774 | 7,061,961 | 52,813 | 0.7423% | 3.003 s |
+| 4 + 1 | 14,163,321 | 14,128,928 | 34,393 | 0.2428% | 3.005 s |
+| 8 + 1 | 8,246,971 | 8,231,753 | 15,218 | 0.1845% | 3.005 s |
+
+No production change was made. This is a deterministic-concept concurrent race with probabilistic scheduling; the observed counts prove occurrence, not a universal rate.
+
+## 15. Policy lookup scaling
+
+| Policy shape | Grants | Existing role / denied action | Missing role |
+| --- | ---: | ---: | ---: |
+| 1 role × 1 action | 104 ns | same order | same order |
+| 10 × 5 | not retained separately | same order | same order |
+| 100 × 5 | 116 ns | same order | same order |
+| 1,000 × 20 | 118 ns | same order | same order |
+| 10,000 × 20 | ~130 ns | same order | same order |
+
+With Access fixed at one matching fact, policy cardinality adds only a few tens of nanoseconds across four orders of magnitude. Long key behavior was not found to be material in the separately measured short/normal/long role/action case; a full cross-product was intentionally not claimed.
+
+## 16. Policy construction and validation
+
+| Policy | Build time | Construction allocation volume |
+| --- | ---: | ---: |
+| 1 × 1 | below useful broad-suite resolution | 5 / 440 B |
+| 100 × 5 | 71.4 µs | 1,706 / 66,044 B |
+| 1,000 × 20 | 2.91 ms | 64,010 / 2.48 MiB |
+| 10,000 × 20 | 29.89 ms median (29.79–30.04) | not allocation-instrumented |
+
+Known-action validation at 1,000×20 was 3.18 ms versus 2.87 ms without validation (about 0.31 ms / 11%). The 10,000×20 Criterion case had one iteration per sample, hence median rather than a falsely precise slope. Invalid `UnknownAction` construction is validation work followed by an early error; it was compile/test covered but not separately timed, so no unsupported number is reported.
+
+## 17. Policy replacement
+
+| Replacement policy | Time |
+| --- | ---: |
+| 1 × 1 | 46 ns |
+| 100 × 5 | 6.17 µs |
+| 1,000 × 20 | 211 µs |
+
+The Criterion benchmark uses `iter_batched` and clones the prepared replacement in setup; fixture policy construction is excluded. The measured interval assigns the new value while holding the write lock and can include dropping the previous policy; no stronger destructor attribution is claimed. `try_replace` was exercised by normal validation tests, but valid/invalid timing was not separately retained; its dominant valid work is candidate build plus this replacement.
+
+## 18. Concurrent reads
+
+Current fixed-work throughput (operations/s):
+
+| Readers | Access 1 immediate allow | Access 5 deny | Access 25 last allow | Access 100 last allow |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | 4.20 M | 7.75 M | 1.99 M | 0.712 M |
+| 2 | 12.01 M | 19.19 M | 4.34 M | 1.39 M |
+| 4 | 5.13 M | 12.42 M | 7.60 M | 2.59 M |
+| 8 | 3.05 M | 3.56 M | 2.89 M | 2.51 M |
+| 16 | 3.24 M | 3.67 M | 3.19 M | 2.62 M |
+
+Results are noisy enough that a single run should not be used as a universal scaling law. They show useful parallel read throughput, then contention/oversubscription effects at 8–16 readers on this 8-logical-core machine.
+
+## 19. Concurrent reads with replacement
+
+Small immediate-allow reader throughput:
+
+| Readers | Read only | Every 10,000 | Every 1,000 | Every 100 | Every 10 |
+| ---: | ---: | ---: | ---: | ---: |
+| 4 | 5.13 M/s | 5.37 M/s | 5.51 M/s | 5.86 M/s | 5.37 M/s |
+| 8 | 3.05 M/s | 3.12 M/s | 3.02 M/s | 3.13 M/s | 3.47 M/s |
+| 16 | 3.24 M/s | 3.21 M/s | 3.33 M/s | 3.24 M/s | 3.36 M/s |
+
+Prepared replacement policies make this a lock-contention experiment. The run does not show a material throughput loss at the tested rates; variation and scheduling overwhelm any small effect. No latency percentiles were collected, so tail-latency conclusions are out of scope.
+
+## 20. Memory footprint
+
+| Type | `size_of` |
+| --- | ---: |
+| `RoleId` / `ActionId` | 24 B / 24 B |
+| `TargetKey` | 48 B |
+| `RoleAssignment` / `Decision` | 72 B / 72 B |
+| `Access` | 24 B |
+| `Policy` / `Authorizer` | 48 B / 64 B |
+
+Construction allocation volume for representative Access is 95 B (1), 950 B (10), 9.5 KB (100), and 95 KB (1,000); this is allocation traffic, not an exact retained-heap measurement. Representative policy construction volume is 440 B (1×1), 66 KB (100×5), and 2.48 MiB (1,000×20).
+
+## 21. Realistic knowledge-base workloads
+
+| Scenario | Time |
+| --- | ---: |
+| Direct article access, allow | 155 ns |
+| Normal 8-fact user, article allow | 156 ns |
+| Normal 8-fact user, `can_any(article, wiki)` with Wiki allow | 236 ns |
+| Access 25, 10 mixed checks | 2.06 µs |
+| Access 100, 100 mixed checks | 42.71 µs |
+
+Ownership verification outside this crate is deliberately excluded; once its Access fact exists, it has the direct-assignment shape measured here.
+
+## 22. Request-level batches
+
+The stable mixed workload is approximately 70% allow / 30% deny and includes `can` and `can_any`.
+
+| Access | Checks | Batch time | Average |
+| ---: | ---: | ---: | ---: |
+| 5 | 100 | 15.46 µs | 155 ns/check |
+| 25 | 10 | ~2.15 µs | ~215 ns/check |
+| 25 | 100 | 21.52 µs | 215 ns/check |
+| 100 | 100 | 42.38 µs | 424 ns/check |
+| 100 | 1,000 | 424.63 µs | 425 ns/check |
+
+Practical reading: ten typical checks cost about 2 µs at Access 25; 100 cost about 22 µs at Access 25 or 42 µs at Access 100; 1,000 cost about 425 µs at Access 100. Exact 1/5/25/50/500 rows are available as harness inputs but were not retained from the first broad run; these anchor points are sufficient to show the linear batch cost without presenting invented detail.
+
+## 23. Thresholds
+
+| Operation | 500 ns | 1 µs | 5 µs | 10 µs | 50 µs | 100 µs | 500 µs | 1 ms |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Runtime worst case | 50 | 100 | 500 | 1,000 | 5,000 | 10,000 | >10k | >10k |
+| Typed worst case | 25–50 | 100 | 500 | 1,000 | 5,000 | 10,000 | >10k | >10k |
+| `can_any` all deny | 100 (4 targets) | >100; 1k/4 is 6.57 µs | 1,000 (4) | >1k shown | — | — | — | — |
+| Access construct | 10 | 25-ish | 100 | 250-ish | 1,000 | 2,500-ish | 10,000 | >10k |
+| Policy build | 1×1 likely | 1×1 likely | 100×5 | 100×5 | 100×5 | 1,000×20 | 1,000×20 | 1,000×20 |
+
+“ish” indicates a first point inferred from a clean linear series rather than directly sampled at every listed size; it is not a precision claim.
+
+## 24. Anomalies and reruns
+
+The original runtime last-match at Access 250 had a short-run 8.8 µs anomaly. The 50-sample rerun was 3.46 µs (3.45–3.48 µs) and is used throughout. The original typed last-match at Access 100 was 1.68 µs with a 1.49–2.07 µs CI; an independent focused benchmark was 1.487 µs (1.485–1.489 µs). Neither anomaly alters the architecture conclusions. Concurrency is flagged noisy by design and is not smoothed.
+
+## 25. Benchmarks intentionally rejected
+
+`define_authorization!` versus manual `TargetType`/`Action`/`ActionOn` implementation was not timed: both compile to the same trait implementations and runtime operations. A runtime comparison would be meaningless. Direct `RwLock` acquisition was also rejected because the public API intentionally does not expose the lock; the report uses end-to-end inference instead.
+
+## 26. Observations
+
+- **Access Vec scan:** retain it for the expected 5–100 assignment range. Worst case remains sub-1 µs through 50 entries and is only 1.3–1.4 µs at 100. Indexing has evidence only for sustained contexts around 500–1,000 facts, while construction and cloning are already tens of microseconds there.
+- **Typed identifiers and `Decision::Allow`:** they add a visible fixed 55–65 ns and allocations. This dominates empty/tiny deny checks but disappears into 100+ fact scans. It is not presently a microsecond problem.
+- **`can_any`:** typed construction gives it meaningful tiny-Access fixed overhead. Prebuilt sequential checks show little extra performance cost attributable solely to repeated reads; however, the snapshot-consistency failure is independently a serious finding.
+- **Policy lookup:** policy cardinality has a small request-path effect. Policy build is milliseconds only for thousands of role/action entries, reasonable for refresh rather than per-request work.
+- **`RwLock` / replacement:** normal read throughput is high but does not scale monotonically on this machine. Prepared-policy refresh did not show a clear throughput loss, but no p95/p99 claim is warranted.
+- **Request cost:** ten to one thousand realistic checks stay in the low-microsecond to sub-millisecond range for the measured Access sizes.
+
+## 27. Potential future investigations
+
+These are not implemented in this measurement task.
+
+1. **Make `can_any` evaluate under one policy snapshot.** Acceptance: the concurrent snapshot stress must report zero impossible denials; compare tiny-Access 2/3/4-candidate timings before/after.
+2. **Consider an optional large-Access index only if real contexts sustain 500–1,000+ facts.** Acceptance: Access scan curve, all four denial shapes, data-shape tests, construction/clone timing and allocation volume.
+3. **Consider reducing typed owned-ID work only for workloads dominated by empty/tiny checks.** Acceptance: typed/runtime table, allocation harness, target/action construction, and realistic request batches.
+4. **Consider an internal/non-owning successful-result path only if profiles show `Decision::Allow` traffic matters.** Acceptance: allow-vs-deny timing, allocation counts, and normal `.is_allowed()` request batches.
+
+No current timing result alone justifies adding complexity to `Access`, action IDs, or typed targets. The reproduced `can_any` consistency result warrants separate correctness design work before performance optimization.
