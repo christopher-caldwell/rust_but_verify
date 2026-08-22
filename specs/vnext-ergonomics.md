@@ -48,5 +48,8 @@ escape hatch.
   string nor a raw target-key type.
 - Documentation and examples show equivalent macro and non-macro action/
   target declarations, plus numeric, slug, composite, and UUID identifiers.
+- Examples 02 through 04 use the macro declaration form. A separately named
+  example duplicates Example 01's scenario and behavior using only ordinary
+  Rust declarations, with comments that make the functional equivalence clear.
 - The library continues to do no relationship traversal, domain-object
   validation, policy-language evaluation, persistence, or framework work.
