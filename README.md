@@ -51,7 +51,7 @@ assert!(authz
 # Ok::<(), rust_but_verify::PolicyError>(())
 ```
 
-Read the examples in order. Each one adds one layer to the previous model:
+Read the examples in order. Each one adds one layer to the previous policy:
 
 1. `examples/01_internal_knowledge_base.rs` — **Role**: a user receives a role
    and the role grants article permissions. It uses macro declarations.
@@ -98,7 +98,7 @@ An action ID is one opaque consumer-owned string, such as `"article.edit"`.
 `Article::ident(1)` and `Wiki::ident(1)` remain distinct targets; idents may be
 numeric, slugs, UUIDs, or composite values. The application establishes all
 domain relationships before selecting a target to check.
-Unknown roles and actions do not grant access. An optional known-action set can
+Unknown roles and actions do not allow access. An optional known-action set can
 reject misspelled runtime action keys while building a policy.
 
 ## Policy refresh

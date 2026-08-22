@@ -27,8 +27,12 @@ fn main() -> Result<(), rust_but_verify::PolicyError> {
         .allow("article_owner", EditArticle);
     let authz = Authorizer::new(policy.build()?);
     let alice = Access::with_role("wiki_editor", Wiki::ident(42));
+    let bob_id = 7;
+    let article_owner_id = 7;
     let mut bob = Access::empty();
-    bob.add_role("article_owner", Article::ident(991)); // caller-verified ownership
+    if bob_id == article_owner_id {
+        bob.add_role("article_owner", Article::ident(991));
+    }
     let charlie = Access::empty();
     assert!(
         authz

@@ -9,7 +9,10 @@ iteration, not a request to redesign v0 before that evidence is reviewed.
   `User -> Team -> Repository`, `Environment -> Project`, and pull-request
   authorship into effective `RoleAssignment` values before calling it. This is
   consistent with the documented boundary, but callers need careful, visible
-  code to avoid accidentally treating an unverified relationship as a grant.
+  code to avoid accidentally treating an unverified relationship as permission.
+- **Broad and leaf-level facts scale differently.** Wiki-wide authority never
+  materializes every Article. After verifying ownership for one request, the
+  application can supply that exact leaf assignment for that request only.
 - **There is no native group, parent, or ownership representation.** A team
   permission, a repository-parent check, and an author-only permission all look like
   direct role assignments to the authorizer. The source-control example shows
@@ -25,4 +28,4 @@ iteration, not a request to redesign v0 before that evidence is reviewed.
 - **An allow decision identifies a role and target.** With overlapping permissions, the
   first matching assignment determines `Decision::Allow { via_role, via_target }`.
   That is enough for a yes/no check, but not a complete explanation of whether access
-  came from a team, direct grant, or another effective-assignment source.
+  came from a team, direct permission, or another effective-assignment source.

@@ -14,6 +14,11 @@ define_authorization! {
 struct ArticleRecord {
     id: u64,
     wiki_id: u64,
+    owner_id: u64,
+}
+
+struct User {
+    id: u64,
 }
 
 fn main() -> Result<(), rust_but_verify::PolicyError> {
@@ -27,6 +32,7 @@ fn main() -> Result<(), rust_but_verify::PolicyError> {
     let article = ArticleRecord {
         id: 991,
         wiki_id: 42,
+        owner_id: 7,
     };
 
     // A durable Wiki assignment covers every article in Wiki 42. No leaf
@@ -35,9 +41,10 @@ fn main() -> Result<(), rust_but_verify::PolicyError> {
 
     // The application loaded the request's article and verified Bob's owner
     // relation; it supplies the resulting leaf-level fact.
-    let mut bob = Access::empty();
-    if true {
-        bob.add_role("article_owner", Article::ident(article.id));
+    let bob = User { id: 7 };
+    let mut bob_access = Access::empty();
+    if bob.id == article.owner_id {
+        bob_access.add_role("article_owner", Article::ident(article.id));
     }
     let charlie = Access::empty();
 
@@ -53,7 +60,7 @@ fn main() -> Result<(), rust_but_verify::PolicyError> {
     assert!(
         authz
             .can_any(
-                &bob,
+                &bob_access,
                 EditArticle,
                 (Article::ident(article.id), Wiki::ident(article.wiki_id))
             )
@@ -70,7 +77,7 @@ fn main() -> Result<(), rust_but_verify::PolicyError> {
     );
     assert!(
         !authz
-            .can(&bob, EditArticle, Article::ident(992))
+            .can(&bob_access, EditArticle, Article::ident(992))
             .is_allowed()
     );
     Ok(())
