@@ -3,64 +3,17 @@
 //! The new idea is that a role does not answer only "what can this user do?"
 //! It answers "what can this user do in this particular community?"
 
-use rust_but_verify::{
-    Access, Action, ActionId, Authorizer, Model, RoleAssignment, Scope, ScopedBy, TargetKey,
-};
+use rust_but_verify::{Access, Authorizer, Model, RoleAssignment, Scope, define_authorization};
 
-#[derive(Clone, Copy)]
-struct ViewCommunity;
-#[derive(Clone, Copy)]
-struct CreateMessage;
-#[derive(Clone, Copy)]
-struct DeleteMessage;
-#[derive(Clone, Copy)]
-struct ModerateMember;
-#[derive(Clone, Copy)]
-struct ConfigureCommunity;
-
-// Each application action has a stable runtime key. Keeping these declarations
-// explicit makes the policy entries below easy to connect to their meaning.
-impl Action for ViewCommunity {
-    fn action_id(&self) -> ActionId {
-        ActionId::new("community.view")
-    }
+define_authorization! {
+    target Community = "community" {
+        action ViewCommunity = "community.view";
+        action CreateMessage = "message.create";
+        action DeleteMessage = "message.delete";
+        action ModerateMember = "member.moderate";
+        action ConfigureCommunity = "community.configure";
+    };
 }
-
-impl Action for CreateMessage {
-    fn action_id(&self) -> ActionId {
-        ActionId::new("message.create")
-    }
-}
-
-impl Action for DeleteMessage {
-    fn action_id(&self) -> ActionId {
-        ActionId::new("message.delete")
-    }
-}
-
-impl Action for ModerateMember {
-    fn action_id(&self) -> ActionId {
-        ActionId::new("member.moderate")
-    }
-}
-
-impl Action for ConfigureCommunity {
-    fn action_id(&self) -> ActionId {
-        ActionId::new("community.configure")
-    }
-}
-
-struct Community;
-
-impl Scope for Community {
-    const KIND: &'static str = "community";
-}
-
-impl ScopedBy<Community> for ViewCommunity {}
-impl ScopedBy<Community> for CreateMessage {}
-impl ScopedBy<Community> for DeleteMessage {}
-impl ScopedBy<Community> for ModerateMember {}
-impl ScopedBy<Community> for ConfigureCommunity {}
 
 struct User {
     name: &'static str,
@@ -95,23 +48,17 @@ fn main() -> Result<(), rust_but_verify::ModelError> {
     let alice = User {
         name: "Alice",
         access: Access::new([
-            RoleAssignment::new("moderator", TargetKey::new("community", "rust-developers")),
-            RoleAssignment::new("member", TargetKey::new("community", "game-night")),
+            RoleAssignment::for_target("moderator", Community::ident("rust-developers")),
+            RoleAssignment::for_target("member", Community::ident("game-night")),
         ]),
     };
     let bob = User {
         name: "Bob",
-        access: Access::new([RoleAssignment::new(
-            "member",
-            TargetKey::new("community", "rust-developers"),
-        )]),
+        access: Access::with_role("member", Community::ident("rust-developers")),
     };
     let carol = User {
         name: "Carol",
-        access: Access::new([RoleAssignment::new(
-            "admin",
-            TargetKey::new("community", "game-night"),
-        )]),
+        access: Access::with_role("admin", Community::ident("game-night")),
     };
 
     // Alice's moderator assignment matches only `community::rust-developers`.

@@ -5,86 +5,21 @@
 //! The application establishes the `Environment -> Project` relationship
 //! before selecting which scope to check.
 
-use rust_but_verify::{
-    Access, Action, ActionId, Authorizer, Model, RoleAssignment, Scope, ScopedBy, TargetKey,
-};
+use rust_but_verify::{Access, Authorizer, Model, RoleAssignment, Scope, define_authorization};
 
-#[derive(Clone, Copy)]
-struct ViewProject;
-#[derive(Clone, Copy)]
-struct ConfigureProject;
-#[derive(Clone, Copy)]
-struct CreateDeployment;
-#[derive(Clone, Copy)]
-struct ViewDeployment;
-#[derive(Clone, Copy)]
-struct CancelDeployment;
-#[derive(Clone, Copy)]
-struct PromoteDeployment;
-#[derive(Clone, Copy)]
-struct DeployEnvironment;
-
-// Each typed action exposes the runtime permission it represents.
-impl Action for ViewProject {
-    fn action_id(&self) -> ActionId {
-        ActionId::new("project.view")
-    }
+define_authorization! {
+    target Project = "project" {
+        action ViewProject = "project.view";
+        action ConfigureProject = "project.configure";
+        action CreateDeployment = "deployment.create";
+        action ViewDeployment = "deployment.view";
+        action CancelDeployment = "deployment.cancel";
+        action PromoteDeployment = "deployment.promote";
+    };
+    target Environment = "environment" {
+        action DeployEnvironment = "environment.deploy";
+    };
 }
-
-impl Action for ConfigureProject {
-    fn action_id(&self) -> ActionId {
-        ActionId::new("project.configure")
-    }
-}
-
-impl Action for CreateDeployment {
-    fn action_id(&self) -> ActionId {
-        ActionId::new("deployment.create")
-    }
-}
-
-impl Action for ViewDeployment {
-    fn action_id(&self) -> ActionId {
-        ActionId::new("deployment.view")
-    }
-}
-
-impl Action for CancelDeployment {
-    fn action_id(&self) -> ActionId {
-        ActionId::new("deployment.cancel")
-    }
-}
-
-impl Action for PromoteDeployment {
-    fn action_id(&self) -> ActionId {
-        ActionId::new("deployment.promote")
-    }
-}
-
-impl Action for DeployEnvironment {
-    fn action_id(&self) -> ActionId {
-        ActionId::new("environment.deploy")
-    }
-}
-
-struct Project;
-struct Environment;
-
-impl Scope for Project {
-    const KIND: &'static str = "project";
-}
-
-impl Scope for Environment {
-    const KIND: &'static str = "environment";
-}
-
-impl ScopedBy<Project> for ViewProject {}
-impl ScopedBy<Project> for ConfigureProject {}
-impl ScopedBy<Project> for CreateDeployment {}
-impl ScopedBy<Project> for ViewDeployment {}
-impl ScopedBy<Project> for CancelDeployment {}
-impl ScopedBy<Project> for PromoteDeployment {}
-impl ScopedBy<Environment> for DeployEnvironment {}
 
 struct ProjectRecord {
     slug: &'static str,
@@ -173,26 +108,17 @@ fn main() -> Result<(), rust_but_verify::ModelError> {
 
     let alice = User {
         name: "Alice",
-        access: Access::new([RoleAssignment::new(
-            "owner",
-            TargetKey::new("project", "billing-api"),
-        )]),
+        access: Access::with_role("owner", Project::ident("billing-api")),
     };
     let bob = User {
         name: "Bob",
-        access: Access::new([RoleAssignment::new(
-            "developer",
-            TargetKey::new("project", "billing-api"),
-        )]),
+        access: Access::with_role("developer", Project::ident("billing-api")),
     };
     let github_ci = ServiceAccount {
         name: "github-ci",
         access: Access::new([
-            RoleAssignment::new("deployer", TargetKey::new("project", "billing-api")),
-            RoleAssignment::new(
-                "deployer",
-                TargetKey::new("environment", staging.scope_id()),
-            ),
+            RoleAssignment::for_target("deployer", Project::ident("billing-api")),
+            RoleAssignment::for_target("deployer", Environment::ident(staging.scope_id())),
         ]),
     };
 

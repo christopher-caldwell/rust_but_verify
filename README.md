@@ -53,16 +53,19 @@ assert!(authz
 
 Read the examples in order. Each one adds one layer to the previous model:
 
-1. `examples/internal_knowledge_base.rs` — **Role**: a user receives a role
-   and the role grants article permissions.
-2. `examples/community_server.rs` — **Scope**: a user's role applies only in
+1. `examples/01_internal_knowledge_base.rs` — **Role**: a user receives a role
+   and the role grants article permissions. It uses macro declarations.
+2. `examples/02_community_server.rs` — **Scope**: a user's role applies only in
    the named community.
-3. `examples/deployment_platform.rs` — **Relationships**: users and service
+3. `examples/03_deployment_platform.rs` — **Relationships**: users and service
    accounts act on projects and environments after the application establishes
    their relationship.
-4. `examples/source_control_platform.rs` — **Composition**: team-derived
+4. `examples/04_source_control_platform.rs` — **Composition**: team-derived
    access, direct grants, parent resources, authorship, and restricted
    sub-resources combine without granting more than intended.
+5. `examples/05_internal_knowledge_base_without_macros.rs` — **Manual
+   declarations**: functionally identical to Example 1, but intentionally
+   written without `define_authorization!`.
 
 See [`docs/example-api-friction.md`](docs/example-api-friction.md) for the API
 friction uncovered while writing these examples.
@@ -92,14 +95,14 @@ if validation fails.
 
 ## Declarations
 
-Use `define_authorization!` for routine declarations, as Example 1 does. For
-an equivalent non-macro declaration, see Example 2: it implements `Scope`,
-`Action`, and `ScopedBy` directly. Both forms preserve the same typed checks.
+Use `define_authorization!` for routine declarations, as Examples 1 through 4
+do. For an equivalent non-macro declaration, see Example 5: it implements
+`Scope`, `Action`, and `ScopedBy` directly while preserving the same typed
+checks and behavior as Example 1.
 
-Action types, scope types, and `ScopedBy` implementations are deliberately
-explicit. Runtime policy loading also uses a small mutable builder loop. This is
-some boilerplate, but the concepts remain visible and ordinary Rust tooling can
-navigate them. The v0 intentionally avoids macros or compatibility helpers
-until repeated consumer use shows which declarations are genuinely awkward.
+The macro keeps routine action, target, and compatibility declarations concise.
+The manual form remains ordinary Rust when a consumer prefers it. Runtime policy
+loading also uses a small mutable builder loop so runtime permissions remain
+visible and data-driven.
 
 The public API is unstable and breaking changes are expected.
