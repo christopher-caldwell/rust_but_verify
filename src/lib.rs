@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 mod authorizer;
 mod identifiers;
 mod model;
