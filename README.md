@@ -10,12 +10,11 @@ application has not declared compatible.
 
 ```rust
 use rust_but_verify::{
-    Access, Action, ActionKey, Authorizer, Model, RoleAssignment, Scope,
-    ScopeKey, ScopedBy,
+    Access, Action, ActionId, Authorizer, Model, Scope, ScopedBy,
 };
 
 mod scheduling {
-    use rust_but_verify::{Action, ActionKey};
+    use rust_but_verify::{Action, ActionId};
 
     #[derive(Clone, Copy)]
     pub struct Edit;
@@ -23,8 +22,8 @@ mod scheduling {
     pub const EDIT: Edit = Edit;
 
     impl Action for Edit {
-        fn action_key(&self) -> ActionKey {
-            ActionKey::new("scheduling", "edit")
+        fn action_id(&self) -> ActionId {
+            ActionId::new("scheduling.edit")
         }
     }
 }
@@ -32,22 +31,19 @@ mod scheduling {
 struct Show;
 
 impl Scope for Show {
-    const NAMESPACE: &'static str = "show";
+    const KIND: &'static str = "show";
 }
 
 impl ScopedBy<Show> for scheduling::Edit {}
 
-let runtime_policy = [("show_producer", ActionKey::new("scheduling", "edit"))];
+let runtime_policy = [("show_producer", ActionId::new("scheduling.edit"))];
 let mut builder = Model::builder();
 for (role, action) in runtime_policy {
     builder.grant(role, action);
 }
 
 let authz = Authorizer::new(builder.build()?);
-let access = Access::new([RoleAssignment::new(
-    "show_producer",
-    ScopeKey::new("show", "midnight-signal"),
-)]);
+let access = Access::with_role("show_producer", Show::ident("midnight-signal"));
 
 assert!(authz
     .can(&access, scheduling::EDIT, Show::ident("midnight-signal"))

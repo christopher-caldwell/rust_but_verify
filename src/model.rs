@@ -2,11 +2,11 @@ use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
 
-use crate::{Action, ActionKey, RoleId};
+use crate::{Action, ActionId, RoleId};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Model {
-    grants: HashMap<RoleId, HashSet<ActionKey>>,
+    grants: HashMap<RoleId, HashSet<ActionId>>,
 }
 
 impl Model {
@@ -14,7 +14,7 @@ impl Model {
         ModelBuilder::new()
     }
 
-    pub fn role_grants(&self, role: &RoleId, action: &ActionKey) -> bool {
+    pub fn role_grants(&self, role: &RoleId, action: &ActionId) -> bool {
         self.grants
             .get(role)
             .is_some_and(|actions| actions.contains(action))
@@ -23,8 +23,8 @@ impl Model {
 
 #[derive(Clone, Debug, Default)]
 pub struct ModelBuilder {
-    grants: HashMap<RoleId, HashSet<ActionKey>>,
-    known_actions: Option<HashSet<ActionKey>>,
+    grants: HashMap<RoleId, HashSet<ActionId>>,
+    known_actions: Option<HashSet<ActionId>>,
 }
 
 impl ModelBuilder {
@@ -36,7 +36,7 @@ impl ModelBuilder {
         self.grants
             .entry(role.into())
             .or_default()
-            .insert(action.action_key());
+            .insert(action.action_id());
         self
     }
 
@@ -48,7 +48,7 @@ impl ModelBuilder {
         self.known_actions = Some(
             actions
                 .into_iter()
-                .map(|action| action.action_key())
+                .map(|action| action.action_id())
                 .collect(),
         );
         self
@@ -61,8 +61,8 @@ impl ModelBuilder {
             }
 
             for action in actions {
-                if action.namespace().is_empty() || action.name().is_empty() {
-                    return Err(ModelError::EmptyActionPart {
+                if action.as_str().is_empty() {
+                    return Err(ModelError::EmptyActionId {
                         action: action.clone(),
                     });
                 }
@@ -88,19 +88,16 @@ impl ModelBuilder {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ModelError {
     EmptyRole,
-    EmptyActionPart { action: ActionKey },
-    UnknownAction { action: ActionKey },
+    EmptyActionId { action: ActionId },
+    UnknownAction { action: ActionId },
 }
 
 impl fmt::Display for ModelError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::EmptyRole => formatter.write_str("role identifier must not be empty"),
-            Self::EmptyActionPart { action } => {
-                write!(
-                    formatter,
-                    "action `{action}` must have a namespace and name"
-                )
+            Self::EmptyActionId { action } => {
+                write!(formatter, "action identifier `{action}` must not be empty")
             }
             Self::UnknownAction { action } => write!(formatter, "unknown action `{action}`"),
         }
@@ -117,14 +114,14 @@ mod tests {
     struct Edit;
 
     impl Action for Edit {
-        fn action_key(&self) -> ActionKey {
-            ActionKey::new("scheduling", "edit")
+        fn action_id(&self) -> ActionId {
+            ActionId::new("scheduling.edit")
         }
     }
 
     #[test]
     fn builds_runtime_defined_roles_and_grants() {
-        let edit = ActionKey::new("scheduling", "edit");
+        let edit = ActionId::new("scheduling.edit");
         let mut builder = Model::builder();
         builder.grant("parent", edit.clone());
 
@@ -141,16 +138,13 @@ mod tests {
 
         let model = builder.build().expect("typed grant should be valid");
 
-        assert!(model.role_grants(
-            &RoleId::new("parent"),
-            &ActionKey::new("scheduling", "edit")
-        ));
+        assert!(model.role_grants(&RoleId::new("parent"), &ActionId::new("scheduling.edit")));
     }
 
     #[test]
     fn optional_validation_rejects_unknown_actions() {
-        let edit = ActionKey::new("scheduling", "edit");
-        let typo = ActionKey::new("scheduling", "edti");
+        let edit = ActionId::new("scheduling.edit");
+        let typo = ActionId::new("scheduling.edti");
         let mut builder = Model::builder();
         builder
             .validate_actions([edit])
@@ -164,7 +158,7 @@ mod tests {
 
     #[test]
     fn runtime_actions_do_not_require_a_catalog() {
-        let custom = ActionKey::new("application", "runtime-defined");
+        let custom = ActionId::new("application.runtime-defined");
         let mut builder = Model::builder();
         builder.grant("custom-role", custom.clone());
 
@@ -176,15 +170,15 @@ mod tests {
     #[test]
     fn rejects_empty_runtime_identifiers() {
         let mut empty_role = Model::builder();
-        empty_role.grant("", ActionKey::new("scheduling", "edit"));
+        empty_role.grant("", ActionId::new("scheduling.edit"));
         assert_eq!(empty_role.build(), Err(ModelError::EmptyRole));
 
-        let empty_name = ActionKey::new("scheduling", "");
+        let empty_name = ActionId::new("");
         let mut empty_action = Model::builder();
         empty_action.grant("parent", empty_name.clone());
         assert_eq!(
             empty_action.build(),
-            Err(ModelError::EmptyActionPart { action: empty_name })
+            Err(ModelError::EmptyActionId { action: empty_name })
         );
     }
 }

@@ -5,7 +5,7 @@
 //! into the exact role assignments RustButVerify evaluates.
 
 use rust_but_verify::{
-    Access, Action, ActionKey, Authorizer, Model, RoleAssignment, Scope, ScopeKey, ScopedBy,
+    Access, Action, ActionId, Authorizer, Model, RoleAssignment, Scope, ScopedBy, TargetKey,
 };
 
 #[derive(Clone, Copy)]
@@ -32,62 +32,62 @@ struct MergePullRequest;
 // Explicit action declarations make every policy permission visible without
 // asking the reader to expand a macro mentally.
 impl Action for ViewOrganization {
-    fn action_key(&self) -> ActionKey {
-        ActionKey::new("organization", "view")
+    fn action_id(&self) -> ActionId {
+        ActionId::new("organization.view")
     }
 }
 
 impl Action for ManageOrganizationMembers {
-    fn action_key(&self) -> ActionKey {
-        ActionKey::new("organization", "manage_members")
+    fn action_id(&self) -> ActionId {
+        ActionId::new("organization.manage_members")
     }
 }
 
 impl Action for Push {
-    fn action_key(&self) -> ActionKey {
-        ActionKey::new("repository", "push")
+    fn action_id(&self) -> ActionId {
+        ActionId::new("repository.push")
     }
 }
 
 impl Action for ConfigureRepository {
-    fn action_key(&self) -> ActionKey {
-        ActionKey::new("repository", "configure")
+    fn action_id(&self) -> ActionId {
+        ActionId::new("repository.configure")
     }
 }
 
 impl Action for ManageCollaborators {
-    fn action_key(&self) -> ActionKey {
-        ActionKey::new("repository", "manage_collaborators")
+    fn action_id(&self) -> ActionId {
+        ActionId::new("repository.manage_collaborators")
     }
 }
 
 impl Action for DeployEnvironment {
-    fn action_key(&self) -> ActionKey {
-        ActionKey::new("environment", "deploy")
+    fn action_id(&self) -> ActionId {
+        ActionId::new("environment.deploy")
     }
 }
 
 impl Action for EditPullRequest {
-    fn action_key(&self) -> ActionKey {
-        ActionKey::new("pull_request", "edit")
+    fn action_id(&self) -> ActionId {
+        ActionId::new("pull_request.edit")
     }
 }
 
 impl Action for ClosePullRequest {
-    fn action_key(&self) -> ActionKey {
-        ActionKey::new("pull_request", "close")
+    fn action_id(&self) -> ActionId {
+        ActionId::new("pull_request.close")
     }
 }
 
 impl Action for RequestReview {
-    fn action_key(&self) -> ActionKey {
-        ActionKey::new("pull_request", "request_review")
+    fn action_id(&self) -> ActionId {
+        ActionId::new("pull_request.request_review")
     }
 }
 
 impl Action for MergePullRequest {
-    fn action_key(&self) -> ActionKey {
-        ActionKey::new("pull_request", "merge")
+    fn action_id(&self) -> ActionId {
+        ActionId::new("pull_request.merge")
     }
 }
 
@@ -97,16 +97,16 @@ struct Environment;
 struct PullRequest;
 
 impl Scope for Organization {
-    const NAMESPACE: &'static str = "organization";
+    const KIND: &'static str = "organization";
 }
 impl Scope for Repository {
-    const NAMESPACE: &'static str = "repository";
+    const KIND: &'static str = "repository";
 }
 impl Scope for Environment {
-    const NAMESPACE: &'static str = "environment";
+    const KIND: &'static str = "environment";
 }
 impl Scope for PullRequest {
-    const NAMESPACE: &'static str = "pull_request";
+    const KIND: &'static str = "pull_request";
 }
 
 impl ScopedBy<Organization> for ViewOrganization {}
@@ -185,15 +185,15 @@ fn backend_member_access(
     Access::new([
         RoleAssignment::new(
             "organization_member",
-            ScopeKey::new("organization", team.organization.slug),
+            TargetKey::new("organization", team.organization.slug),
         ),
         RoleAssignment::new(
             "repository_writer",
-            ScopeKey::new("repository", repository.scope_id()),
+            TargetKey::new("repository", repository.scope_id()),
         ),
         RoleAssignment::new(
             "staging_deployer",
-            ScopeKey::new("environment", staging.scope_id()),
+            TargetKey::new("environment", staging.scope_id()),
         ),
     ])
 }
@@ -203,12 +203,12 @@ fn backend_member_access(
 fn contributor_access(author: &str, pull_request: &PullRequestRecord<'_>) -> Access {
     let mut access = Access::new([RoleAssignment::new(
         "repository_contributor",
-        ScopeKey::new("repository", pull_request.repository.scope_id()),
+        TargetKey::new("repository", pull_request.repository.scope_id()),
     )]);
     if author == pull_request.author {
         access.push(RoleAssignment::new(
             "pull_request_author",
-            ScopeKey::new("pull_request", pull_request.scope_id()),
+            TargetKey::new("pull_request", pull_request.scope_id()),
         ));
     }
     access
@@ -280,7 +280,7 @@ fn main() -> Result<(), rust_but_verify::ModelError> {
         name: "Bob",
         access: Access::new([RoleAssignment::new(
             "repository_admin",
-            ScopeKey::new("repository", payments_api.scope_id()),
+            TargetKey::new("repository", payments_api.scope_id()),
         )]),
     };
     let carol = User {
@@ -291,14 +291,14 @@ fn main() -> Result<(), rust_but_verify::ModelError> {
         name: "Dana",
         access: Access::new([RoleAssignment::new(
             "repository_maintainer",
-            ScopeKey::new("repository", payments_api.scope_id()),
+            TargetKey::new("repository", payments_api.scope_id()),
         )]),
     };
     let deploy_production = ServiceAccount {
         name: "deploy-production",
         access: Access::new([RoleAssignment::new(
             "production_deployer",
-            ScopeKey::new("environment", production.scope_id()),
+            TargetKey::new("environment", production.scope_id()),
         )]),
     };
 

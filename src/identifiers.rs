@@ -32,40 +32,30 @@ impl fmt::Display for RoleId {
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct ActionKey {
-    namespace: String,
-    name: String,
-}
+pub struct ActionId(String);
 
-impl ActionKey {
-    pub fn new(namespace: impl Into<String>, name: impl Into<String>) -> Self {
-        Self {
-            namespace: namespace.into(),
-            name: name.into(),
-        }
+impl ActionId {
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
     }
 
-    pub fn namespace(&self) -> &str {
-        &self.namespace
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
+    pub fn as_str(&self) -> &str {
+        &self.0
     }
 }
 
-impl fmt::Display for ActionKey {
+impl fmt::Display for ActionId {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{}.{}", self.namespace, self.name)
+        self.0.fmt(formatter)
     }
 }
 
 pub trait Action {
-    fn action_key(&self) -> ActionKey;
+    fn action_id(&self) -> ActionId;
 }
 
-impl Action for ActionKey {
-    fn action_key(&self) -> ActionKey {
+impl Action for ActionId {
+    fn action_id(&self) -> ActionId {
         self.clone()
     }
 }
@@ -74,27 +64,27 @@ impl<A> Action for &A
 where
     A: Action + ?Sized,
 {
-    fn action_key(&self) -> ActionKey {
-        (*self).action_key()
+    fn action_id(&self) -> ActionId {
+        (*self).action_id()
     }
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct ScopeKey {
-    namespace: String,
+pub struct TargetKey {
+    kind: String,
     identifier: String,
 }
 
-impl ScopeKey {
-    pub fn new(namespace: impl Into<String>, identifier: impl ToString) -> Self {
+impl TargetKey {
+    pub fn new(kind: impl Into<String>, identifier: impl ToString) -> Self {
         Self {
-            namespace: namespace.into(),
+            kind: kind.into(),
             identifier: identifier.to_string(),
         }
     }
 
-    pub fn namespace(&self) -> &str {
-        &self.namespace
+    pub fn kind(&self) -> &str {
+        &self.kind
     }
 
     pub fn identifier(&self) -> &str {
@@ -102,23 +92,23 @@ impl ScopeKey {
     }
 }
 
-impl fmt::Display for ScopeKey {
+impl fmt::Display for TargetKey {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{}::{}", self.namespace, self.identifier)
+        write!(formatter, "{}::{}", self.kind, self.identifier)
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RoleAssignment {
     role: RoleId,
-    scope: ScopeKey,
+    target: TargetKey,
 }
 
 impl RoleAssignment {
-    pub fn new(role: impl Into<RoleId>, scope: ScopeKey) -> Self {
+    pub fn new(role: impl Into<RoleId>, target: TargetKey) -> Self {
         Self {
             role: role.into(),
-            scope,
+            target,
         }
     }
 
@@ -126,8 +116,8 @@ impl RoleAssignment {
         &self.role
     }
 
-    pub fn scope(&self) -> &ScopeKey {
-        &self.scope
+    pub fn target(&self) -> &TargetKey {
+        &self.target
     }
 }
 
@@ -138,18 +128,17 @@ mod tests {
     #[test]
     fn runtime_values_preserve_consumer_data() {
         let role = RoleId::new("parent");
-        let action = ActionKey::new("scheduling", "edit");
-        let scope = ScopeKey::new("child", 123_u64);
-        let assignment = RoleAssignment::new(role.clone(), scope.clone());
+        let action = ActionId::new("scheduling.edit");
+        let target = TargetKey::new("child", 123_u64);
+        let assignment = RoleAssignment::new(role.clone(), target.clone());
 
         assert_eq!(role.as_str(), "parent");
-        assert_eq!(action.namespace(), "scheduling");
-        assert_eq!(action.name(), "edit");
+        assert_eq!(action.as_str(), "scheduling.edit");
         assert_eq!(action.to_string(), "scheduling.edit");
-        assert_eq!(scope.namespace(), "child");
-        assert_eq!(scope.identifier(), "123");
-        assert_eq!(scope.to_string(), "child::123");
+        assert_eq!(target.kind(), "child");
+        assert_eq!(target.identifier(), "123");
+        assert_eq!(target.to_string(), "child::123");
         assert_eq!(assignment.role(), &role);
-        assert_eq!(assignment.scope(), &scope);
+        assert_eq!(assignment.target(), &target);
     }
 }
