@@ -45,6 +45,57 @@ assert!(authz.can(&access, Edit, Show::ident("midnight-signal")));
 # Ok::<(), rust_but_verify::PolicyError>(())
 ```
 
+## Authorization checks
+
+Use `can` for the ordinary yes/no authorization question. It returns `bool`,
+so it fits naturally in an `if` or assertion. When a caller also needs the
+first successful authorization path, use `decide`; it returns
+`Decision::Allow { via_role, via_target }` or `Decision::Deny`.
+
+`Decision` is optional provenance, not an exhaustive explanation: if more than
+one path could allow an action, it reports only the first successful path in
+the API's evaluation order.
+
+For a small “this OR that” check, `can_any` and `decide_any` accept an
+exactly-two-target tuple. The tuple is evaluated left to right. They hold one
+policy snapshot for the complete multi-target operation.
+
+```rust
+# use rust_but_verify::{Access, Action, ActionId, ActionOn, Authorizer, Policy, TargetType};
+# #[derive(Clone, Copy)] struct Edit;
+# impl Action for Edit { fn action_id(&self) -> ActionId { ActionId::new("show.edit") } }
+# struct Show; impl TargetType for Show { const KIND: &'static str = "show"; }
+# struct Collection; impl TargetType for Collection { const KIND: &'static str = "collection"; }
+# impl ActionOn<Show> for Edit {}
+# impl ActionOn<Collection> for Edit {}
+# let authz = Authorizer::new(Policy::builder().build()?);
+# let access = Access::empty();
+if authz.can_any(&access, Edit, (Show::ident("midnight-signal"), Collection::ident("drama"))) {
+    // Allow the edit.
+}
+# Ok::<(), rust_but_verify::PolicyError>(())
+```
+
+For zero, one, or more than two candidates, build `Targets<A>`. Each `add`
+is checked at compile time for `ActionOn` compatibility; candidates retain
+insertion order, are not deduplicated, and have no arbitrary maximum.
+The application is responsible for supplying relevant targets (for example,
+an article and its already-verified wiki); RustButVerify does not discover
+domain relationships.
+
+```rust
+# use rust_but_verify::{Action, ActionId, ActionOn, TargetType, Targets};
+# #[derive(Clone, Copy)] struct Edit;
+# impl Action for Edit { fn action_id(&self) -> ActionId { ActionId::new("show.edit") } }
+# struct Show; impl TargetType for Show { const KIND: &'static str = "show"; }
+# struct Collection; impl TargetType for Collection { const KIND: &'static str = "collection"; }
+# impl ActionOn<Show> for Edit {}
+# impl ActionOn<Collection> for Edit {}
+let targets = Targets::<Edit>::new()
+    .add(Show::ident("midnight-signal"))
+    .add(Collection::ident("drama"));
+```
+
 ## Examples
 
 The `examples/` directory is a separate, non-published Cargo package containing

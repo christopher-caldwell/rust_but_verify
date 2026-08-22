@@ -33,20 +33,16 @@ fn main() -> Result<(), rust_but_verify::PolicyError> {
     let authz = Authorizer::new(policy.build()?);
 
     let alice = Access::with_role("wiki_editor", Wiki::ident(42));
-    let edits_991 = authz
-        .can_any(
-            &alice,
-            EditArticle,
-            (Article::ident(991), Wiki::ident(42)),
-        )
-        .is_allowed();
-    let edits_500 = authz
-        .can_any(
-            &alice,
-            EditArticle,
-            (Article::ident(500), Wiki::ident(7)),
-        )
-        .is_allowed();
+    let edits_991 = authz.can_any(
+        &alice,
+        EditArticle,
+        (Article::ident(991), Wiki::ident(42)),
+    );
+    let edits_500 = authz.can_any(
+        &alice,
+        EditArticle,
+        (Article::ident(500), Wiki::ident(7)),
+    );
 
     println!("Alice edits Article 991 in Wiki 42: {edits_991}");
     println!("Alice edits Article 500 in Wiki 7: {edits_500}");

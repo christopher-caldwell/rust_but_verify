@@ -17,13 +17,11 @@ struct ArticleRecord {
 
 fn may_edit_article(authz: &Authorizer, access: &Access, article: &ArticleRecord) -> bool {
     // The application supplies the article and its already-verified Wiki target.
-    authz
-        .can_any(
-            access,
-            EditArticle,
-            (Article::ident(article.id), Wiki::ident(article.wiki_id)),
-        )
-        .is_allowed()
+    authz.can_any(
+        access,
+        EditArticle,
+        (Article::ident(article.id), Wiki::ident(article.wiki_id)),
+    )
 }
 
 fn main() -> Result<(), rust_but_verify::PolicyError> {
