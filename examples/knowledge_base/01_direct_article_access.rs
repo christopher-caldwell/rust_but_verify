@@ -11,9 +11,13 @@
 // used by all of those pieces.
 use rust_but_verify::{Access, Authorizer, Policy, TargetType, define_authorization};
 
-// Define the vocabulary for this application's authorization model.
-// The macro creates Rust types at compile time. Later, the policy rules that use
-// those types may be assembled statically or from data your application loads.
+// Define the typed vocabulary for this application's authorization model.
+// This is compile-time Rust code: the macro creates ordinary Rust types and
+// trait implementations for the targets, actions, and valid action/target
+// combinations. The macro itself cannot be populated from runtime data.
+//
+// `Policy` and `Access` values are different. The application may construct
+// those at runtime, including from configuration or application data.
 define_authorization! {
     // A target is the kind of resource someone wants to act on.
     // Our first model contains only one kind of target: an article.

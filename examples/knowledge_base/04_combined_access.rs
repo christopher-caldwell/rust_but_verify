@@ -21,7 +21,29 @@ struct ApplicationUser {
     name: &'static str,
 }
 
-/// Add an Article-level role to an existing `Access` value.
+// Carried forward unchanged from Step 3: the application owns the relationship
+// that determines who receives Wiki-level access.
+struct WikiRecord {
+    id: u64,
+    owner_id: u64,
+}
+
+// Carried forward from Step 3: application data is verified first, then the
+// resulting Wiki-level fact is placed into Access for RustButVerify to evaluate.
+fn establish_wiki_editor_access(caller: &ApplicationUser, wiki: &WikiRecord) -> Access {
+    let mut access = Access::empty();
+
+    if caller.id == wiki.owner_id {
+        println!(
+            "Since {} is the owner of Wiki {}, we add the role 'wiki_editor' to their specific access",
+            caller.name, wiki.id,
+        );
+        access.add_role("wiki_editor", Wiki::ident(wiki.id));
+    }
+    access
+}
+
+/// NEW: add an Article-level role to an existing `Access` value.
 ///
 /// Unlike Step 2, this function mutates access that may already contain other
 /// roles. That is how one caller can carry multiple independent access facts.
@@ -55,6 +77,17 @@ fn main() -> Result<(), rust_but_verify::PolicyError> {
     };
     let bob = ApplicationUser { id: 2, name: "Bob" };
 
+    // These Wiki records and the helper above preserve Step 3's application-side
+    // access mechanism. Alice owns Wiki 1, while Bob owns Wiki 2.
+    let wiki_1 = WikiRecord {
+        id: 1,
+        owner_id: alice.id,
+    };
+    let wiki_2 = WikiRecord {
+        id: 2,
+        owner_id: bob.id,
+    };
+
     // The records deliberately exercise both access paths:
     //
     // - Alice owns Article 1, but it is outside the Wiki she edits.
@@ -62,31 +95,29 @@ fn main() -> Result<(), rust_but_verify::PolicyError> {
     // - Bob owns Article 4, and it is outside the Wiki Alice edits.
     let article_1 = ArticleRecord {
         id: 1,
-        wiki_id: 2,
+        wiki_id: wiki_2.id,
         owner_id: alice.id,
     };
     let article_2 = ArticleRecord {
         id: 2,
-        wiki_id: 1,
+        wiki_id: wiki_1.id,
         owner_id: bob.id,
     };
     let article_3 = ArticleRecord {
         id: 3,
-        wiki_id: 1,
+        wiki_id: wiki_1.id,
         owner_id: bob.id,
     };
     let article_4 = ArticleRecord {
         id: 4,
-        wiki_id: 2,
+        wiki_id: wiki_2.id,
         owner_id: bob.id,
     };
 
-    // Start with the Wiki-level access introduced in Step 3.
-    println!(
-        "Since {} is an editor of Wiki 1, we add the role 'wiki_editor' to their specific access",
-        alice.name,
-    );
-    let mut access_for_alice = Access::with_role("wiki_editor", Wiki::ident(1));
+    // Start with exactly the Wiki-level access establishment introduced in Step
+    // 3. Alice receives `wiki_editor @ Wiki 1` because the application verified
+    // that relationship from its own records.
+    let mut access_for_alice = establish_wiki_editor_access(&alice, &wiki_1);
 
     // NEW: add the Article-level ownership fact from Step 2 to the same access
     // value. Alice's access now contains roles on two different target types:

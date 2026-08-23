@@ -2,7 +2,11 @@
 
 use rust_but_verify::{Access, Authorizer, Policy, TargetType, define_authorization};
 
-// It's important to note that this CAN be static or dynamic. You are free to load your policy, and create rules however you need.
+// Like Step 1, this macro defines the application's typed authorization
+// vocabulary at compile time. Target types, action types, and the target types
+// on which each action is valid must be known when the application is compiled.
+// The generated Rust types and trait implementations cannot be loaded from a
+// database or configuration file at runtime.
 define_authorization! {
     // For the entity type `article`
     target Article = "article" {
@@ -24,15 +28,17 @@ struct ApplicationUser {
 }
 
 /// Create an `Access` value based on your own use case and rules. The access value is later evaluated by the authorizer.
-/// 
-/// You have the option to build your access at request time, or at start time, depending on your needs. 
-/// Request time is better for a larger set of dynamic info. Build time can be used if the set is fixed size, 
-/// and can be loaded entirely, all at once.
+///
+/// The application owns these facts and decides when and how to establish them.
+/// Durable facts may be loaded or cached earlier, while request-specific facts
+/// may be established for a request. Ownership of the current article is
+/// naturally resource-specific. RustButVerify does not prescribe where these
+/// facts are stored or loaded; it only evaluates the `Access` it receives.
 fn establish_ownership_access(caller: &ApplicationUser, article: &ArticleRecord) -> Access {
     // Begin with no roles. The caller only receives a role if this application-level ownership check succeeds.
     let mut access = Access::empty();
 
-    // If the requestor is the owner, they are given the role `article_owner`. 
+    // If the requestor is the owner, they are given the role `article_owner`.
     if caller.id == article.owner_id {
         println!(
             "Since {:?} is the owner of article {:?}, we add the role 'article_owner' to their specific access",
@@ -44,22 +50,21 @@ fn establish_ownership_access(caller: &ApplicationUser, article: &ArticleRecord)
 }
 
 fn main() -> Result<(), rust_but_verify::PolicyError> {
-    // The policy says what an ownership role is allowed to do. 
+    // Unlike the typed declarations above, this Policy is a runtime value.
+    // The application may assemble or replace role-to-action rules from a
+    // database, configuration file, admin-controlled source, or other runtime
+    // data. The policy says what an ownership role is allowed to do.
     // It does not however, inform which resource the role can do that action on.
     let mut policy_builder = Policy::builder();
     policy_builder.allow("article_owner", EditArticle);
     let authorization_policy = policy_builder.build()?;
     let authorizer = Authorizer::new(authorization_policy);
 
-
     // The users of our application
-    let bob = ApplicationUser {
-        id: 1,
-        name: "Bob"
-    };
+    let bob = ApplicationUser { id: 1, name: "Bob" };
     let alice = ApplicationUser {
         id: 2,
-        name: "Alice"
+        name: "Alice",
     };
 
     // These are application records that would normally come from a database.
@@ -76,7 +81,7 @@ fn main() -> Result<(), rust_but_verify::PolicyError> {
     // Establish access separately for each resource.
     let access_for_bob_on_article_1 = establish_ownership_access(&bob, &article_1);
 
-    // Since Bob is NOT the owner of article 2, this will result in empty access, effectively saying 
+    // Since Bob is NOT the owner of article 2, this will result in empty access, effectively saying
     // "Bob can do nothing for article 2."
     let access_for_bob_on_article_2 = establish_ownership_access(&bob, &article_2);
 

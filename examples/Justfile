@@ -7,3 +7,6 @@ example domain step:
 
 check:
     cargo check --bins
+    
+fmt:
+    cargo fmt --all
