@@ -1,193 +1,291 @@
-# RustButVerify
+# Rust But Verify
 
-RustButVerify is an exploratory Rust authorization library for one question:
+*get it?*
 
-> Can any supplied role assignment perform this action on this exact target?
+Small, typed RBAC for exact application resources.
 
-Roles and permissions are runtime data. Rust types make application call sites
-more discoverable and prevent checking an action against a target type that the
-application has not declared compatible.
+Rust But Verify answers one question:
+
+> Can any of this caller's role assignments perform this action on this target?
+
+It keeps authorization deliberately narrow. Your application owns users, persistence, relationships, and business rules. Rust But Verify evaluates the authorization facts you give it.
+
+> **Status:** early development. The public API is still subject to breaking changes.
+
+## Quick start
 
 ```toml
 [dependencies]
 rust-but-verify = "0.1.0"
 ```
 
+Define the targets and actions your application understands:
+
 ```rust
 use rust_but_verify::{
-    Access, Action, ActionId, ActionOn, Authorizer, Policy, TargetType,
+    Access, Authorizer, Policy, TargetType, define_authorization,
 };
 
-#[derive(Clone, Copy)]
-struct Edit;
+define_authorization! {
+    target Article = "article" {
+        action EditArticle = "article.edit";
+    };
+}
+```
 
-impl Action for Edit {
-    fn action_id(&self) -> ActionId {
-        ActionId::new("scheduling.edit")
+Build a policy describing what each role may do:
+
+```rust
+let mut policy = Policy::builder();
+policy.allow("article_editor", EditArticle);
+
+let authorizer = Authorizer::new(policy.build()?);
+```
+
+Supply the caller's access and ask the authorization question:
+
+```rust
+let bob = Access::with_role(
+    "article_editor",
+    Article::ident(1),
+);
+
+assert!(authorizer.can(
+    &bob,
+    EditArticle,
+    Article::ident(1),
+));
+
+assert!(!authorizer.can(
+    &bob,
+    EditArticle,
+    Article::ident(2),
+));
+```
+
+Bob is an editor of **Article 1**, not every article.
+
+## The model
+
+Rust But Verify separates three things:
+
+
+| Type         | Meaning                                                    |
+| ------------ | ---------------------------------------------------------- |
+| `Policy`     | What actions a role may perform                            |
+| `Access`     | Which roles apply to a caller on exact targets             |
+| `Authorizer` | Evaluates an action against the policy and supplied access |
+
+
+A policy might say:
+
+```text
+article_editor -> article.edit
+```
+
+Access supplies the missing context:
+
+```text
+article_editor @ article::1
+```
+
+Together they answer:
+
+```text
+Can this caller edit article::1? -> true
+Can this caller edit article::2? -> false
+```
+
+Checks use exact target identity and default to deny.
+
+## Compile-time vocabulary, runtime policy
+
+The typed authorization vocabulary is part of your Rust program and must be known at compile time:
+
+- target types
+- action types
+- which actions are valid on which target types
+
+`define_authorization!` generates ordinary Rust types and trait implementations for that vocabulary. It cannot be populated dynamically from a database or configuration file.
+
+`Policy` and `Access` are runtime values.
+
+That means your application may load or update:
+
+- which actions a role currently allows
+- which role assignments apply to a caller
+- request-specific facts such as verified ownership
+
+without recompiling the application.
+
+## Application relationships stay in the application
+
+Suppose Article 1 belongs to Wiki 42 and a caller is an editor of that Wiki.
+
+Your application establishes the `Article -> Wiki` relationship. Rust But Verify does not discover it.
+
+An action can be valid against both target types:
+
+```rust
+define_authorization! {
+    target Article = "article";
+    target Wiki = "wiki";
+
+    action EditArticle = "article.edit" for [Article, Wiki];
+}
+```
+
+Then check the exact article **or** its already-verified Wiki:
+
+```rust
+let allowed = authorizer.can_any(
+    &access,
+    EditArticle,
+    (
+        Article::ident(article.id),
+        Wiki::ident(article.wiki_id),
+    ),
+);
+```
+
+The two-target tuple is convenience syntax for a common "this or that" check.
+
+For an arbitrary number of relevant targets, use `Targets<A>`:
+
+```rust
+use rust_but_verify::Targets;
+
+let targets = Targets::<EditArticle>::new()
+    .add(Article::ident(article.id))
+    .add(Wiki::ident(article.wiki_id));
+
+let allowed = authorizer.can_any(
+    &access,
+    EditArticle,
+    targets,
+);
+```
+
+`Targets<A>` preserves insertion order, has no arbitrary target-count limit, and checks every added target for `ActionOn` compatibility at compile time.
+
+## Decisions and provenance
+
+Most callers only need a boolean:
+
+```rust
+authorizer.can(&access, EditArticle, Article::ident(1))
+```
+
+When you also need the first successful authorization path, use `decide`:
+
+```rust
+match authorizer.decide(
+    &access,
+    EditArticle,
+    Article::ident(1),
+) {
+    rust_but_verify::Decision::Allow {
+        via_role,
+        via_target,
+    } => {
+        println!("allowed by {via_role} on {via_target}");
+    }
+    rust_but_verify::Decision::Deny => {
+        println!("denied");
     }
 }
-
-struct Show;
-
-impl TargetType for Show {
-    const KIND: &'static str = "show";
-}
-
-impl ActionOn<Show> for Edit {}
-
-let mut builder = Policy::builder();
-builder.allow("show_producer", Edit);
-
-let authz = Authorizer::new(builder.build()?);
-let access = Access::with_role("show_producer", Show::ident("midnight-signal"));
-
-if authz.can(&access, Edit, Show::ident("midnight-signal")) {
-    // Allow the edit.
-}
-# Ok::<(), rust_but_verify::PolicyError>(())
 ```
 
-## Authorization checks
+`Decision` is provenance, not a complete explanation engine. If multiple assignments could authorize an action, it reports the first successful one in evaluation order.
 
-Use `can` for the ordinary yes/no authorization question. It returns `bool`,
-so it fits naturally in an `if` or assertion. When a caller also needs the
-first successful authorization path, use `decide`; it returns
-`Decision::Allow { via_role, via_target }` or `Decision::Deny`.
+## Runtime policy updates
 
-`Decision` is optional provenance, not an exhaustive explanation: if more than
-one path could allow an action, it reports only the first successful path in
-the API's evaluation order.
+`Authorizer` does not need to be rebuilt for every policy change.
+
+Build and validate a replacement policy, then install it:
 
 ```rust
-# use rust_but_verify::{Access, Action, ActionId, ActionOn, Authorizer, Decision, Policy, TargetType};
-# #[derive(Clone, Copy)] struct Edit;
-# impl Action for Edit { fn action_id(&self) -> ActionId { ActionId::new("show.edit") } }
-# struct Show; impl TargetType for Show { const KIND: &'static str = "show"; }
-# impl ActionOn<Show> for Edit {}
-# let mut policy = Policy::builder(); policy.allow("show_producer", Edit);
-# let authz = Authorizer::new(policy.build()?);
-# let access = Access::with_role("show_producer", Show::ident("midnight-signal"));
-match authz.decide(&access, Edit, Show::ident("midnight-signal")) {
-    Decision::Allow { via_role, via_target } => println!("allowed by {via_role:?} at {via_target:?}"),
-    Decision::Deny => println!("denied"),
-}
-# Ok::<(), rust_but_verify::PolicyError>(())
+authorizer.replace_policy(new_policy);
 ```
 
-For a small “this OR that” check, `can_any` and `decide_any` accept an
-exactly-two-target tuple. The tuple is evaluated left to right. They hold one
-policy snapshot for the complete multi-target operation.
+Or build and replace in one operation:
 
 ```rust
-# use rust_but_verify::{Access, Action, ActionId, ActionOn, Authorizer, Policy, TargetType};
-# #[derive(Clone, Copy)] struct Edit;
-# impl Action for Edit { fn action_id(&self) -> ActionId { ActionId::new("show.edit") } }
-# struct Show; impl TargetType for Show { const KIND: &'static str = "show"; }
-# struct Collection; impl TargetType for Collection { const KIND: &'static str = "collection"; }
-# impl ActionOn<Show> for Edit {}
-# impl ActionOn<Collection> for Edit {}
-# let authz = Authorizer::new(Policy::builder().build()?);
-# let access = Access::empty();
-if authz.can_any(&access, Edit, (Show::ident("midnight-signal"), Collection::ident("drama"))) {
-    // Allow the edit.
-}
-# Ok::<(), rust_but_verify::PolicyError>(())
+authorizer.try_replace(policy_builder)?;
 ```
 
-For zero, one, or more than two candidates, build `Targets<A>`. Each `add`
-is checked at compile time for `ActionOn` compatibility; candidates retain
-insertion order, are not deduplicated, and have no arbitrary maximum.
-The application is responsible for supplying relevant targets (for example,
-an article and its already-verified wiki); RustButVerify does not discover
-domain relationships.
+Multi-target checks evaluate against one complete policy snapshot.
 
-```rust
-# use rust_but_verify::{Access, Action, ActionId, ActionOn, Authorizer, Policy, TargetType, Targets};
-# #[derive(Clone, Copy)] struct Edit;
-# impl Action for Edit { fn action_id(&self) -> ActionId { ActionId::new("show.edit") } }
-# struct Show; impl TargetType for Show { const KIND: &'static str = "show"; }
-# struct Collection; impl TargetType for Collection { const KIND: &'static str = "collection"; }
-# impl ActionOn<Show> for Edit {}
-# impl ActionOn<Collection> for Edit {}
-# let mut policy = Policy::builder(); policy.allow("collection_editor", Edit);
-# let authz = Authorizer::new(policy.build()?);
-# let access = Access::with_role("collection_editor", Collection::ident("drama"));
-let targets = Targets::<Edit>::new()
-    .add(Show::ident("midnight-signal"))
-    .add(Collection::ident("drama"));
-assert!(authz.can_any(&access, Edit, targets));
-# Ok::<(), rust_but_verify::PolicyError>(())
-```
+## What Rust But Verify does not do
+
+Rust But Verify intentionally does not provide:
+
+- identity or authentication
+- persistence
+- relationship discovery or traversal
+- ownership inference
+- wildcard matching
+- ABAC predicates
+- framework integrations
+- a policy language
+
+The consuming application establishes its domain facts. Rust But Verify evaluates the resulting role, action, and target combinations.
 
 ## Examples
 
-The `examples/` directory is a separate, non-published Cargo package containing
-standalone consumer binaries. Its domains are small tutorials: each successive
-step keeps the application model familiar and introduces only the next
-authorization concept.
+The `examples/` directory is a standalone Cargo package containing runnable tutorial domains.
+
+The Knowledge Base tutorial builds the model gradually:
+
+1. direct access to one Article
+2. application-verified ownership
+3. Wiki-wide access
+4. multiple independent authorization paths
+
+Run a step with:
 
 ```bash
 cd examples
 just example knowledge_base 01
 ```
 
-The first domain is a Knowledge Base ramp:
+Each file is a complete standalone binary.
 
-1. direct Article access with one exact role assignment;
-2. application-verified ownership supplied as an access fact;
-3. Wiki-wide editing with `can_any`; and
-4. ownership-derived and Wiki-wide paths together.
+### Without macros
 
-`define_authorization!` is optional convenience syntax. The
-[`examples/without_macros/`](examples/without_macros/) reference binaries use
-ordinary `TargetType`, `Action`, and `ActionOn` implementations while making
-the same authorization calls. Run them with, for example,
-`just example without_macros 01`.
+The macro is optional.
 
-## Policy and Access
+`examples/without_macros/` demonstrates the same API using ordinary implementations of:
 
-`Policy` is long-lived global role-to-action configuration: `wiki_editor`
-means the same thing wherever it is assigned. `Access` is a caller-supplied
-collection of facts for one authorization context. Durable membership and
-request-derived facts—such as a caller-verified article owner—can be combined
-without rebuilding Policy.
+- `TargetType`
+- `Action`
+- `ActionOn`
 
-## Boundary
+```bash
+cd examples
+just example without_macros 01
+```
 
-The consuming application owns identity, role-assignment loading, persistence,
-configuration loading, and domain relationships. It must establish that an
-article belongs to a wiki or that a caller owns an article before choosing the
-target or access fact to check. RustButVerify does not inspect domain objects,
-traverse relationships, infer ownership, or provide a policy language.
 
-It also provides no persistence adapters, wildcard matching, ABAC predicates,
-framework integration, or identity management. Runtime checks use exact
-`target_kind::ident` equality and default to deny. An action ID is one opaque
-consumer-owned string, such as `"article.edit"`.
 
-Unknown roles and actions do not allow access. An optional known-action set can
-reject misspelled runtime action keys while building a policy.
+## Development
 
-## Policy refresh
+Common repository commands are available through `just`:
 
-Build and validate a complete candidate policy before installing it. Calling
-`Authorizer::replace_policy` swaps an already-built policy atomically;
-`Authorizer::try_replace` builds a candidate and leaves the active policy intact
-if validation fails.
+```bash
+just check
+just test
+just lint
+just doc
+just bench
+```
 
-## Declarations
+The benchmark suite and historical measurements live under `benches/` and `benchmark-results.md`.
 
-Use `define_authorization!` for routine declarations. It keeps action, target,
-and compatibility declarations concise, while the manual form remains ordinary
-Rust for consumers who prefer it. Runtime policy loading remains explicitly
-data-driven through `Policy::builder`.
+## Minimum supported Rust version
 
-## Benchmarks
+Rust But Verify requires Rust **1.85** or newer.
 
-Run the baseline suite with `just bench`. The scenarios are documented in
-[`benches/README.md`](benches/README.md); they measure the current implementation
-without adding indexes or changing authorization behavior.
+## License
 
-See [`docs/example-api-friction.md`](docs/example-api-friction.md) for the API
-friction exposed while writing the tutorials. The public API is unstable and
-breaking changes are expected.
+Rust But Verify is licensed under the [MIT License](LICENSE).
