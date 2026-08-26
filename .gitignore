@@ -1,3 +1,4 @@
 /target
 examples/target/
+experiments/**/target/
 .taskledger/

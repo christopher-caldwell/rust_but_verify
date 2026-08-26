@@ -21,13 +21,19 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
       - name: Test
-        run: cargo test --all-targets
+        run: cargo test
       - name: Strict rustdoc
         env:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --no-deps
       - name: Check tutorial binaries
         run: cargo check --manifest-path examples/Cargo.toml --bins
+      - name: Check indexed research package formatting
+        run: cargo fmt --manifest-path experiments/indexed_access/Cargo.toml --all -- --check
+      - name: Lint indexed research package
+        run: cargo clippy --manifest-path experiments/indexed_access/Cargo.toml --all-targets -- -D warnings
+      - name: Test indexed research package
+        run: cargo test --manifest-path experiments/indexed_access/Cargo.toml
       - name: Verify release and package contents
         run: scripts/publish-crate.sh --check-only
 

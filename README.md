@@ -165,10 +165,16 @@ just doc
 just bench
 ```
 
-Benchmarks and historical measurements live in [`benches/`](benches/) and [`benchmark-results.md`](benchmark-results.md).
+Production benchmarks live under [`benches/`](benches/); the 10k–1m scaling
+envelope and architectural comparisons are deliberately opt-in. Historical
+performance studies live under [`docs/benchmarks/`](docs/benchmarks/).
+
+`Access` intentionally keeps role assignments in insertion order in a `Vec`
+and performs linear scans. The indexed alternative is retained only as
+reproducible architectural research.
 
 Rust But Verify requires Rust **1.85** or newer.
 
 ## License
 
-Licensed under the [MIT License](LICENSE).
+Licensed under the [MIT License](https://github.com/christopher-caldwell/rust_but_verify/blob/main/LICENSE).

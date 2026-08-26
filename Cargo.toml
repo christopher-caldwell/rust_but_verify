@@ -11,10 +11,12 @@ keywords = ["authorization", "rbac", "permissions", "access-control"]
 categories = ["authentication"]
 autoexamples = false
 exclude = [
+    ".agents/**",
     ".codex/**",
     ".github/**",
     ".taskledger/**",
     "examples/**",
+    "experiments/**",
     "specs/**",
     "release-plz.toml",
     "Justfile",
@@ -42,4 +44,8 @@ harness = false
 
 [[bench]]
 name = "can_any_consistency"
+harness = false
+
+[[bench]]
+name = "authorization_scale"
 harness = false

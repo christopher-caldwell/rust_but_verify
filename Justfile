@@ -23,6 +23,12 @@ test:
 check-examples:
     cargo check --manifest-path examples/Cargo.toml --bins
 
+# Compile, lint, and test the unpublished indexed research package.
+check-experiment:
+    cargo fmt --manifest-path experiments/indexed_access/Cargo.toml --all -- --check
+    cargo clippy --manifest-path experiments/indexed_access/Cargo.toml --all-targets -- -D warnings
+    cargo test --manifest-path experiments/indexed_access/Cargo.toml
+
 doc:
     RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
 
@@ -35,6 +41,20 @@ bench-full:
     cargo bench --bench authorization_baseline
     cargo bench --bench allocation_counts
     cargo bench --bench concurrency
+
+# Run the opt-in production Access and Targets scaling envelope through 1m facts.
+bench-scale filter="":
+    cargo bench --bench authorization_scale -- {{filter}}
+
+# Compare the production Vec representation with the experimental target index.
+bench-index filter="":
+    cargo bench --manifest-path experiments/indexed_access/Cargo.toml --bench comparison -- {{filter}}
+
+# Run the complete architectural study, including allocation accounting.
+bench-study:
+    cargo bench --bench authorization_scale
+    cargo bench --manifest-path experiments/indexed_access/Cargo.toml --bench comparison
+    cargo bench --manifest-path experiments/indexed_access/Cargo.toml --bench allocation_comparison
 
 # Verify crate contents and release metadata without requiring a clean worktree.
 package-check:

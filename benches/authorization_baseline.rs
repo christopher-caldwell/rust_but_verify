@@ -9,8 +9,8 @@ use criterion::{
     BatchSize, BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main,
 };
 use rust_but_verify::{
-    Access, Action, ActionId, ActionOn, Authorizer, Decision, Policy, RoleAssignment, TargetKey,
-    TargetType, Targets, define_authorization,
+    Access, Action, ActionId, ActionOn, Authorizer, Policy, RoleAssignment, TargetKey, TargetType,
+    Targets, define_authorization,
 };
 
 define_authorization! {
@@ -626,20 +626,18 @@ fn bench_locked_multi_target(criterion: &mut Criterion) {
     }
     group.finish();
 }
-fn runtime_sequence(
+fn can_runtime_sequence(
     authz: &Authorizer,
     access: &Access,
     action: &ActionId,
     targets: &[TargetKey],
-) -> Decision {
-    let mut decision = Decision::Deny;
+) -> bool {
     for target in targets {
-        decision = authz.decide_runtime(access, action, target);
-        if decision.is_allowed() {
-            break;
+        if authz.can_runtime(access, action, target) {
+            return true;
         }
     }
-    decision
+    false
 }
 fn bench_can_any_overhead(criterion: &mut Criterion) {
     let authz = authorizer();
@@ -669,11 +667,11 @@ fn bench_can_any_overhead(criterion: &mut Criterion) {
                 |b, access| b.iter(|| black_box(run_can_any(&authz, black_box(access), n))),
             );
             group.bench_with_input(
-                BenchmarkId::new(format!("runtime_sequence_{n}_deny"), size),
+                BenchmarkId::new(format!("can_runtime_sequence_{n}_deny"), size),
                 &deny,
                 |b, access| {
                     b.iter(|| {
-                        black_box(runtime_sequence(
+                        black_box(can_runtime_sequence(
                             &authz,
                             black_box(access),
                             &action,
@@ -693,11 +691,11 @@ fn bench_can_any_overhead(criterion: &mut Criterion) {
                 |b, access| b.iter(|| black_box(run_can_any(&authz, black_box(access), n))),
             );
             group.bench_with_input(
-                BenchmarkId::new(format!("runtime_sequence_{n}_last_allow"), size),
+                BenchmarkId::new(format!("can_runtime_sequence_{n}_last_allow"), size),
                 &allow_last,
                 |b, access| {
                     b.iter(|| {
-                        black_box(runtime_sequence(
+                        black_box(can_runtime_sequence(
                             &authz,
                             black_box(access),
                             &action,

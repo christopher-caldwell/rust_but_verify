@@ -1,31 +1,48 @@
-# Authorization benchmark suite
+# Authorization benchmarks
 
-This directory contains the preserved exhaustive baseline harness plus the
-locked bool-first follow-up checks. It contains no production shortcuts or
+This directory benchmarks the supported production crate. It contains no
 alternate authorization implementation.
 
-Use `just bench can_any` for a filtered Criterion run, or `just bench-full`
-for the Criterion timing suite plus the allocation and concurrency executables.
+## Routine production benchmarks
 
-- `authorization_baseline` retains the pre-existing exhaustive groups and adds
-  focused bool-versus-`Decision`, locked two-target/`Targets` cases, and the
-  Knowledge Base workload. The follow-up run filters to those focused groups;
-  it does not rerun the exhaustive matrix.
-- `allocation_counts` preserves the established allocation scenarios and adds
-  Access-1 allow and deny comparisons between `can`/`decide` and
-  `can_runtime`/`decide_runtime`.
-- `can_any_consistency` alternates policies with 1, 4, and 8 readers plus a
-  writer, reporting calls, allows, impossible denies, and duration.
-- `concurrency` remains the pre-existing fixed-work throughput harness; it is
-  compiled for API compatibility but is not part of the locked follow-up run.
+`just bench [filter]` runs the Criterion timing suite; for example,
+`just bench can_any`. `just bench-full` adds the allocation and fixed-work
+concurrency executables. The suite covers Access lookup/build/clone shapes,
+typed and runtime checks, identifiers, `can`/`decide`, `can_any`, policies,
+realistic requests, allocations, concurrency, and policy-snapshot consistency.
 
-Lookup fixtures are constructed outside timed closures. Typed calls construct
-their action and target inside the closure deliberately; runtime comparisons
-use prebuilt keys. Results are consumed with `black_box`.
+Fixtures are constructed outside timed closures unless construction is the
+measurement. Typed calls deliberately construct their action and target inside
+the closure, while runtime comparisons use prebuilt keys. Results are consumed
+with `black_box`.
 
-Criterion JSON lives in `target/criterion/<group>/<case>/new/estimates.json`
-and its HTML report in `target/criterion/report/index.html`. See
-[`docs/benchmark-baseline.md`](../docs/benchmark-baseline.md) for the checked-in
-analysis. [`docs/bool-first-validation.md`](../docs/bool-first-validation.md)
-records the targeted follow-up results while retaining the prior exhaustive
-evidence in [`benchmark-results.md`](../benchmark-results.md).
+## Opt-in scaling
+
+`just bench-scale [filter]` runs `authorization_scale`: the production
+10k–1m ordered-Vec envelope and the 1–128 candidate `Targets<A>` curve. It is
+excluded from routine checks and CI.
+
+## Allocation and concurrency tools
+
+`allocation_counts` uses `stats_alloc` around individual operations rather
+than statistical timing. `concurrency` measures fixed-work throughput, while
+`can_any_consistency` alternates policy snapshots and reports impossible
+denials. These are executable benchmark targets, not Criterion groups.
+
+## Indexed experiment
+
+The unpublished [`indexed_access` experiment](../experiments/indexed_access/)
+contains the direct production-Vec versus ordered-target-index comparison.
+Run it with `just bench-index [filter]`, or run the complete opt-in research
+suite with `just bench-study`. It is architectural research, not a supported
+Access implementation.
+
+## Reports
+
+Durable results and methodology live in [`docs/benchmarks/`](../docs/benchmarks/):
+
+- [`baseline-2026-08-22.md`](../docs/benchmarks/baseline-2026-08-22.md)
+- [`bool-first-2026-08-22.md`](../docs/benchmarks/bool-first-2026-08-22.md)
+- [`access-index-crossover-2026-08-24.md`](../docs/benchmarks/access-index-crossover-2026-08-24.md)
+
+Generated Criterion JSON and HTML remain under ignored `target/criterion/`.

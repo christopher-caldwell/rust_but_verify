@@ -2,7 +2,7 @@
 
 This report records the locked follow-up checks for the bool-first API. It
 does not replace the previously established exhaustive evidence in
-[`benchmark-results.md`](../benchmark-results.md); that historical baseline
+[`baseline-2026-08-22.md`](baseline-2026-08-22.md); that historical baseline
 remains intact and was not rerun.
 
 The architecture remains unchanged: `Access` stores its assignments in a

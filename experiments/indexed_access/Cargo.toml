@@ -1,0 +1,22 @@
+[package]
+name = "rust-but-verify-indexed-experiment"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+
+[dependencies]
+
+[dev-dependencies]
+criterion = "0.5"
+stats_alloc = "0.1"
+rust-but-verify-baseline = { package = "rust-but-verify", path = "../.." }
+
+[[bench]]
+name = "comparison"
+harness = false
+
+[[bench]]
+name = "allocation_comparison"
+harness = false
+
