@@ -286,7 +286,10 @@ impl Authorizer {
     }
 
     pub fn replace_policy(&self, policy: Policy) {
-        *self.write_policy() = policy;
+        // Swap under the write lock, but free the outgoing policy only after
+        // the guard is released so concurrent checks never wait on its drop.
+        let previous = std::mem::replace(&mut *self.write_policy(), policy);
+        drop(previous);
     }
     pub fn try_replace(&self, candidate: PolicyBuilder) -> Result<(), PolicyError> {
         self.replace_policy(candidate.build()?);
